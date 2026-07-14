@@ -1,0 +1,29 @@
+# runtime data
+/data/
+/download/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+downloaded_archive.txt
+cookies.txt
+client/client_config.json
+
+# downloaded tool binaries
+/bin/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+venv-win/
+*.egg-info/
+
+# PyInstaller build output
+/build/
+/dist/
+*.spec
+
+# OS cruft
+.DS_Store
+Thumbs.db

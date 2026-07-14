@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>yt-dlp & gallery-dl GUI</title>
+<style>
+:root {
+  --bg: #1e1f24; --panel: #26272e; --panel2: #2d2e36; --border: #3a3b45;
+  --fg: #d8d9e0; --fg-dim: #8b8d98; --accent: #4a9eff;
+  --green: #4caf7d; --red: #e05555; --yellow: #d8a637; --blue: #4a9eff;
+  --gray: #7a7c88; --purple: #a58cd6;
+  --fs: 14px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+  font-size: var(--fs); display: flex; flex-direction: column; overflow: hidden;
+}
+/* ── top bar ── */
+#topbar { display: flex; gap: 8px; padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--border); align-items: flex-start; flex-wrap: wrap; }
+#urlbox { flex: 1; min-width: 280px; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: var(--fs); resize: vertical; min-height: 38px; max-height: 140px; font-family: inherit; }
+button { background: var(--panel2); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 14px; font-size: var(--fs); cursor: pointer; white-space: nowrap; font-family: inherit; }
+button:hover { background: #383a44; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { filter: brightness(1.1); }
+button.danger:hover { background: var(--red); border-color: var(--red); color: #fff; }
+/* ── second bar: search + tabs ── */
+#bar2 { display: flex; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); align-items: center; flex-wrap: wrap; }
+#search { width: 240px; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: var(--fs); font-family: inherit; }
+.tab { padding: 6px 18px; border-radius: 6px 6px 0 0; border-bottom: 2px solid transparent; background: none; border-top: none; border-left: none; border-right: none; color: var(--fg-dim); }
+.tab.on { color: var(--fg); border-bottom-color: var(--accent); font-weight: 700; }
+#done-controls { display: none; gap: 6px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+#done-controls select { background: var(--panel2); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-size: calc(var(--fs) - 1px); font-family: inherit; }
+#done-controls button { padding: 6px 10px; font-size: calc(var(--fs) - 1px); }
+#done-status { color: var(--yellow); font-size: calc(var(--fs) - 1px); }
+/* ── table ── */
+#tablewrap { flex: 1; overflow: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { position: sticky; top: 0; background: var(--panel2); color: var(--fg-dim); text-align: left; padding: 7px 10px; font-size: calc(var(--fs) - 1px); border-bottom: 1px solid var(--border); z-index: 2; user-select: none; }
+td { padding: 6px 10px; border-bottom: 1px solid #2a2b33; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tr.row { cursor: default; user-select: none; }
+tr.row:hover { background: #2b2d36; }
+tr.row.sel { background: #34415a !important; }
+tr.grouprow { font-weight: 600; }
+tr.grouprow.drag-over td { border-top: 2px solid var(--accent); }
+tr.vidrow { font-weight: 400; color: #b8bac4; }
+tr.vidrow td:first-child { padding-left: 34px; }
+.st-completed { color: var(--green); } .st-error { color: var(--red); }
+.st-downloading { color: var(--blue); } .st-paused { color: var(--yellow); }
+.st-skipped { color: var(--gray); } .st-queued { color: var(--fg-dim); }
+.st-resolving { color: var(--purple); } .st-cancelled { color: var(--gray); }
+.g-completed td:nth-child(3) { color: var(--green); }
+.expander { display: inline-block; width: 20px; color: var(--fg-dim); cursor: pointer; }
+.namecell { max-width: 480px; }
+.msgcell { max-width: 420px; color: var(--fg-dim); font-size: calc(var(--fs) - 1px); }
+.prio { color: var(--yellow); }
+.pbar { display: inline-block; width: 72px; height: 8px; background: #3a3b45; border-radius: 4px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+.pbar > i { display: block; height: 100%; background: var(--blue); }
+/* ── status bar ── */
+#statusbar { display: flex; gap: 18px; padding: 7px 12px; background: var(--panel); border-top: 1px solid var(--border); color: var(--fg-dim); font-size: calc(var(--fs) - 1px); flex-wrap: wrap; }
+#conn { margin-left: auto; }
+#conn.ok { color: var(--green); } #conn.bad { color: var(--red); }
+/* ── context menu ── */
+#ctxmenu { position: fixed; display: none; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.5); z-index: 100; min-width: 240px; padding: 4px; }
+#ctxmenu div { padding: 7px 14px; border-radius: 5px; cursor: pointer; }
+#ctxmenu div:hover { background: var(--accent); color: #fff; }
+#ctxmenu hr { border: none; border-top: 1px solid var(--border); margin: 4px 6px; }
+#ctxmenu div.danger:hover { background: var(--red); }
+/* ── modal ── */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 200; }
+.modal { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px 22px; min-width: 380px; max-width: 620px; max-height: 84vh; overflow: auto; }
+.modal h3 { margin-bottom: 14px; font-size: calc(var(--fs) + 2px); }
+.modal .frow { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.modal .frow label { flex: 1; }
+.modal input[type=number], .modal input[type=text], .modal select { background: var(--panel2); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; font-size: var(--fs); width: 150px; font-family: inherit; }
+.modal input[type=text].wide { width: 260px; }
+.modal .hint { color: var(--fg-dim); font-size: calc(var(--fs) - 2px); margin: -6px 0 10px; }
+.modal .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.modal pre { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: calc(var(--fs) - 2px); max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+.modal textarea.mono { width: 100%; background: var(--panel2); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: calc(var(--fs) - 2px); font-family: ui-monospace, monospace; resize: vertical; margin-bottom: 4px; }
+/* ── toasts ── */
+#toasts { position: fixed; right: 16px; bottom: 46px; display: flex; flex-direction: column; gap: 8px; z-index: 300; }
+.toast { background: #34363f; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 16px; box-shadow: 0 4px 16px rgba(0,0,0,.4); animation: fadein .18s; max-width: 420px; }
+@keyframes fadein { from { opacity: 0; transform: translateY(8px); } }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <textarea id="urlbox" rows="1"></textarea>
+  <button class="primary" id="btn-add" onclick="addUrls()"></button>
+  <button id="btn-start-all" onclick="api('/api/start_all')"></button>
+  <button class="danger" id="btn-stop-all" onclick="api('/api/stop_all')"></button>
+  <button id="btn-save" onclick="api('/api/save')"></button>
+  <button id="btn-settings" onclick="openSettings()"></button>
+  <button class="danger" id="btn-shutdown" onclick="confirmShutdown()"></button>
+</div>
+
+<div id="bar2">
+  <input id="search">
+  <button class="tab on" id="tab-active" onclick="setTab('active')"><span class="lbl"></span> (<span id="n-active">0</span>)</button>
+  <button class="tab" id="tab-done" onclick="setTab('done')"><span class="lbl"></span> (<span id="n-done">0</span>)</button>
+  <button class="tab" id="tab-ephemeral" onclick="setTab('ephemeral')"><span class="lbl"></span> (<span id="n-ephemeral">0</span>)</button>
+  <div id="done-controls">
+    <span id="done-status"></span>
+    <select id="done-sort" onchange="render()">
+      <option value="modified" id="opt-sort-modified"></option>
+      <option value="created" id="opt-sort-created"></option>
+      <option value="name" id="opt-sort-name"></option>
+    </select>
+    <button onclick="toggleAsc()" id="asc-btn"></button>
+    <button id="btn-recheck-all" onclick="confirmRecheckAll()"></button>
+    <button id="btn-retry-all" onclick="confirmRetryAll()"></button>
+    <button id="btn-redownload-all" onclick="confirmRedownloadAll()"></button>
+    <button id="btn-res-check-all" onclick="resCheckAll()"></button>
+    <button id="btn-size-check-all" onclick="sizeCheckAll()"></button>
+    <button id="btn-missing-check-all" onclick="missingCheckAll()"></button>
+  </div>
+</div>
+
+<div id="tablewrap">
+  <table>
+    <thead><tr>
+      <th style="width:110px"></th>
+      <th class="namecell" id="th-name"></th>
+      <th style="width:110px" id="th-state"></th>
+      <th style="width:150px" id="th-progress"></th>
+      <th style="width:140px" id="th-speed"></th>
+      <th id="th-message"></th>
+    </tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<div id="statusbar">
+  <span id="count-str"></span>
+  <span id="speed-str"></span>
+  <span id="outdir" style="cursor:pointer"></span>
+  <span id="conn" class="bad"></span>
+</div>
+
+<div id="ctxmenu"></div>
+<div class="modal-bg" id="modal-bg"><div class="modal" id="modal"></div></div>
+<div id="toasts"></div>
+
+<script>
+'use strict';
+
+// ───────── i18n ─────────
+const MSG = {
+en: {
+  // static UI
+  url_placeholder: 'Paste one or more URLs — line breaks or spaces to add several at once',
+  btn_add: '➕ Add', btn_start_all: '▶ Start all', btn_stop_all: '⏹ Stop all',
+  btn_save: '💾 Save', btn_settings: '⚙ Settings', btn_shutdown: '⏻ Shut down',
+  search_placeholder: '🔍 Search (URL / title / message)',
+  tab_active: 'Active', tab_done: 'Done', tab_ephemeral: 'This session',
+  tab_ephemeral_title: "Galleries and one-off videos that don't match a persist pattern — shown only while this server is running, never saved to the database.",
+  sort_modified: 'Last modified', sort_created: 'Date added', sort_name: 'Name',
+  asc_desc: '▼ Descending', asc_asc: '▲ Ascending',
+  done_recheck_all: '🔄 Re-check all', done_retry_all: '↺ Retry errors/skips',
+  done_redownload_all: '⟳ Redownload all', done_res_check: '📏 Check resolution',
+  done_size_check: '📦 Check size', done_missing_check: '🔍 Find missing files',
+  col_name: 'Name / URL', col_state: 'State', col_progress: 'Progress',
+  col_speed: 'Speed', col_message: 'Message',
+  conn_connecting: '● Connecting…', conn_connected: '● Connected', conn_reconnecting: '● Reconnecting…',
+  outdir_title: 'Click to copy the path',
+  copy_ok: '📂 Path copied', copy_fail: '⚠ Copy failed',
+  copy_urls_ok: '🔗 {n} URL(s) copied', copy_urls_none: '⚠ Nothing selected to copy',
+  request_failed: '⚠ Request failed: {path}',
+  kind_gallery: '🖼 Gallery', kind_video: '🎬 Video',
+  ctx_start: '▶ Start / Resume', ctx_pause: '⏸ Pause', ctx_stop: '⏹ Stop (group)',
+  ctx_retry: '↺ Retry errors/skips', ctx_recheck: '🔄 Re-check (find new videos)',
+  ctx_fresh: '⟳ Redownload from scratch', ctx_res_check: '📏 Check resolution',
+  ctx_size_check: '📦 Check size', ctx_missing_check: '🔍 Find missing files',
+  ctx_priority: '★ Download first', ctx_move_active: '📂 Move to active',
+  ctx_copy_url: '🔗 Copy URL', ctx_open_video: '▶ Open video (desktop helper)',
+  ctx_open_folder: '📁 Open folder (desktop helper)',
+  ctx_delete: '🗑 Delete (keep files)', ctx_delete_files: '🗑 Delete (with files)',
+  modal_cancel: 'Cancel', modal_confirm: 'Confirm',
+  shutdown_title: '⏻ Shut down',
+  shutdown_body: 'Save and shut down the server?<br>Downloads in progress stop and resume next time it starts.',
+  shutdown_confirm_label: 'Shut down',
+  shutdown_done_title: '⏻ Server stopped',
+  shutdown_done_body: 'Saved and shut down. Restart the app to bring it back online.',
+  fresh_confirm_title: 'Redownload from scratch',
+  fresh_confirm_body: 'Redownload {n} item(s) from scratch?',
+  redownload_all_title: 'Redownload all',
+  redownload_all_body: 'Redownload all {n} completed group(s) from scratch?',
+  recheck_all_title: '🔄 Re-check all',
+  recheck_all_body: 'Check all {n} completed group(s) for newly added videos?',
+  retry_all_title: '↺ Retry errors/skips',
+  retry_all_body: 'Retry every video in an error/skipped state?<br><span style="color:var(--fg-dim)">Private or removed videos are automatically excluded.</span>',
+  res_check_all_body: 'Check the resolution of every completed video?<br>Anything with a short side under <b>{height}px</b>, or a corrupt file, is redownloaded.<br>(Change the threshold in ⚙ Settings.)',
+  size_check_all_body: 'Check the file size of every completed video?<br>Anything <b>{size}MB</b> or smaller, or unreadable, is redownloaded.<br>(Change the threshold in ⚙ Settings.)',
+  res_check_sel_body: 'Check the resolution of the completed videos in {n} selected item(s)?<br>Anything under <b>{height}px</b> is redownloaded.',
+  size_check_sel_body: 'Check the file size of the completed videos in {n} selected item(s)?<br>Anything <b>{size}MB</b> or smaller is redownloaded.',
+  missing_check_all_title: '🔍 Find missing files',
+  missing_check_all_body: 'Scan every completed group for videos marked done that are no longer on disk?<br>(Scans the whole output folder, which may take a while — you confirm again before anything redownloads.)',
+  missing_check_sel_title: '🔍 Find missing files',
+  missing_check_sel_body: 'Check whether the completed videos in {n} selected item(s) still exist on disk?<br>(You confirm again before anything redownloads.)',
+  missing_scan_toast: '🔍 Scanning folder…',
+  missing_none_found: '✅ Checked {n} — nothing missing{extra}',
+  missing_redownload_title: '🔍 Redownload missing files',
+  missing_redownload_body: '<b>{missing}</b> of {checked} checked file(s) are missing from disk.{extra}<pre>{preview}</pre>Redownload them?',
+  missing_redownload_label: 'Redownload',
+  missing_noid_suffix: ' ({n} skipped — no id)',
+  delete_task_title: 'Delete (keep files)', delete_task_body: 'Delete {n} task(s)?<br>Files are kept.',
+  delete_files_title: 'Delete (with files)', delete_files_body: 'Delete {n} task(s)?<br>Their files are deleted too.',
+  delete_confirm_label: 'Delete',
+  delete_files_confirm_title: 'Confirm file deletion',
+  delete_files_confirm_body: 'Delete these {n} file(s)?<pre>{preview}</pre>',
+  open_no_file: "⚠ File not found (maybe it hasn't downloaded yet)",
+  open_video_requested: '▶ Play requested', open_folder_requested: '📁 Open-folder requested',
+  open_helper_fail: "⚠ Couldn't reach the desktop helper — run the clipboard-watcher helper on this PC first",
+  settings_title: '⚙ Settings',
+  s_language: 'Language',
+  s_max_concurrent: 'Concurrent downloads',
+  s_autosave: 'Autosave interval (minutes, 0 = 30s)',
+  s_outdir: 'Output folder',
+  s_res: 'Resolution threshold (short side, px)',
+  s_size: 'Size threshold (MB, redownload at/below)',
+  s_autostart: 'Start everything automatically on launch',
+  s_saveonadd: 'Autosave right after adding a group',
+  s_small_first: 'Download smaller groups first',
+  s_hp_first: 'Download groups closest to finished first',
+  s_font: 'Font size',
+  font_normal: 'Normal', font_large: 'Large', font_xl: 'Extra large', font_xxl: 'Huge',
+  s_persist_label: 'Track permanently (database)',
+  s_persist_hint: 'One pattern per line. A URL is only tracked forever (resumable, deduplicated, re-checkable) if it contains one of these — everything else downloads once and shows under "This session" only. Example: youtube.com',
+  s_gallery_template_label: 'Gallery folder name format',
+  s_gallery_template_hint: 'Placeholders: {artist} {title} {id}',
+  s_cookies_label: '🍪 Cookies',
+  s_cookies_saved: 'Saved ({at})', s_cookies_none: 'None',
+  s_cookies_placeholder: "Paste the contents of a cookies.txt (Netscape format) — leave blank to keep the current one.\nSent to both yt-dlp and gallery-dl. Export one with a browser extension such as \"Get cookies.txt LOCALLY\".",
+  s_cookies_clear: 'Delete saved cookies',
+  settings_cancel: 'Cancel', settings_save: 'Save', settings_saved_toast: '⚙ Settings saved',
+  state_queued: 'Queued', state_downloading: 'Downloading', state_completed: 'Completed',
+  state_paused: 'Paused', state_error: 'Error', state_skipped: 'Skipped',
+  state_resolving: 'Resolving', state_cancelled: 'Cancelled',
+  stats_summary: 'Videos: {done}/{total}  |  Skipped: {skip}  |  Downloading: {dling}  |  Total completed: {cum}',
+  stats_speed: 'Avg speed: {speed}  |  Downloading: {dling}',
+  stats_speed_idle: 'Avg speed: -  |  Downloading: 0',
+  // message codes (engine.py, via M())
+  add_batch_progress: '📋 {count} URLs — adding one by one…',
+  already_downloaded: 'Already downloaded',
+  autosave_done: '💾 Autosaved',
+  binary_not_found: "Couldn't find {tool}",
+  bulk_recheck_progress: '🔄 Checking {count} group(s)…',
+  bulk_redownload_progress: '🔄 Resetting {count} group(s)…',
+  bulk_retry_summary: '↺ Retried {retried}',
+  bulk_retry_summary_excluded: '↺ Retried {retried} (excluded {excluded} private/removed)',
+  cookies_cleared: '🍪 Cookies deleted',
+  cookies_invalid_format: "⚠ Couldn't save cookies — not a cookies.txt (Netscape, tab-separated) file",
+  cookies_save_failed: "⚠ Couldn't save cookies: {error}",
+  cookies_saved: '🍪 Cookies saved',
+  db_save_failed: '⚠ Database save failed: {error}',
+  download_exception: 'Download error: {error}',
+  downloading_progress: 'Downloading… {pct}% ({speed})',
+  exception: 'Error: {error}',
+  exit_code: 'Exit code {code}',
+  exit_code_reason: 'Exit code {code} | {reason}',
+  ffprobe_missing: '⚠ ffprobe not found — install ffmpeg',
+  file_delete_done: '🗑 Deleted {deleted} file(s)',
+  file_delete_done_failed: '🗑 Deleted {deleted} file(s) ({failed} failed)',
+  file_delete_progress: '🗑 Deleting files… {done}/{total}',
+  filepath_backfill_done: '📁 File path index built ({count})',
+  filepath_backfill_save_failed: 'File path backfill save failed: {error}',
+  folder_scan_failed: 'Folder scan failed: {error}',
+  fresh_restart: 'Redownloading from scratch…',
+  gallery_already_exists: '⤵ Already exists — {path}',
+  gallery_done: '✓ Done — {path}',
+  gallery_downloading: 'Downloading…',
+  gallery_downloading_count: 'Downloading… (about {count} files)',
+  group_already_rechecking: '⏳ Already re-checking this group',
+  group_progress: '{remaining} remaining  |  {done} done',
+  group_recheck_existing: '🔁 Existing group — checking for new videos…',
+  group_stopped: 'Group stopped',
+  manual_save_done: '💾 Saved',
+  missing_requeue: '🔍 {count} missing file(s) queued for redownload',
+  missing_requeue_msg: 'File missing — queued for redownload',
+  moved_to_active: 'Moved to active',
+  no_completed_to_check: 'No completed videos to check',
+  no_done_groups: 'No completed groups',
+  output_dir_empty_abort: "No video files found anywhere in the output folder — aborting in case it's just unmounted",
+  output_dir_missing: "Output folder not found: {path} — check that it's mounted",
+  paused_msg: 'Paused',
+  recheck_failed: "Re-check failed: {error}",
+  rechecking: 'Re-checking…',
+  res_check_collecting: '📏 Collecting file list…',
+  res_check_no_targets: '📏 No completed videos to check',
+  res_check_progress: '📏 Checking resolution… {done}/{total}',
+  res_check_summary: '📏 Checked {total} — {redownload} queued for redownload',
+  res_check_summary_missing: '📏 Checked {total} — {redownload} queued for redownload, {missing} file(s) missing',
+  resolution_low_requeue: 'Below resolution threshold — queued for redownload',
+  resolve_error: "Couldn't fetch the list: {reason}",
+  resolving_list: 'Fetching the list…',
+  resuming: 'Resuming…',
+  retry_summary_excluded: '↺ Retried {retried} — excluded {excluded} private/removed',
+  size_check_collecting: '📦 Collecting file list…',
+  size_check_no_targets: '📦 No completed videos to check',
+  size_check_progress: '📦 Checking size… {done}/{total}',
+  size_check_summary: '📦 Checked {total} — {redownload} at/below {threshold_mb}MB queued for redownload',
+  size_check_summary_missing: '📦 Checked {total} — {redownload} queued for redownload, {missing} file(s) missing',
+  size_low_requeue: 'At/below size threshold — queued for redownload',
+  starting: 'Starting…',
+  stopped_by_user: 'Stopped by user',
+  stopped_task: 'Stopped',
+  url_unsupported: "Not supported by yt-dlp or gallery-dl. {reason}",
+  video_completed: '✓ Done',
+  video_done: '✓ Done',
+  video_done_multi: '✓ Done ({count} files)',
+},
+ko: {
+  url_placeholder: 'URL 입력 — 여러 개를 줄바꿈/공백으로 한 번에 붙여넣기 가능',
+  btn_add: '➕ 추가', btn_start_all: '▶ 전체 시작', btn_stop_all: '⏹ 전체 정지',
+  btn_save: '💾 저장', btn_settings: '⚙ 설정', btn_shutdown: '⏻ 종료',
+  search_placeholder: '🔍 검색 (URL/제목/메시지)',
+  tab_active: '진행 중', tab_done: '완료', tab_ephemeral: '이번 세션',
+  tab_ephemeral_title: '영구 추적 패턴에 안 걸린 갤러리·영상 — 이 서버가 켜져있는 동안만 표시되고 DB에는 저장되지 않습니다.',
+  sort_modified: '수정된 순', sort_created: '만든 순', sort_name: '이름순',
+  asc_desc: '▼ 내림차순', asc_asc: '▲ 오름차순',
+  done_recheck_all: '🔄 전체 재확인', done_retry_all: '↺ Error/Skip 재시도',
+  done_redownload_all: '⟳ 전체 재다운로드', done_res_check: '📏 해상도 검사',
+  done_size_check: '📦 용량 검사', done_missing_check: '🔍 누락 파일 검사',
+  col_name: '이름 / URL', col_state: '상태', col_progress: '진행',
+  col_speed: '속도', col_message: '메시지',
+  conn_connecting: '● 연결 중…', conn_connected: '● 연결됨', conn_reconnecting: '● 재연결 중…',
+  outdir_title: '클릭해서 경로 복사',
+  copy_ok: '📂 경로 복사됨', copy_fail: '⚠ 복사 실패',
+  copy_urls_ok: '🔗 URL {n}개 복사됨', copy_urls_none: '⚠ 복사할 항목이 없습니다',
+  request_failed: '⚠ 요청 실패: {path}',
+  kind_gallery: '🖼 갤러리', kind_video: '🎬 영상',
+  ctx_start: '▶ 시작 / 재개', ctx_pause: '⏸ 일시정지', ctx_stop: '⏹ 정지 (그룹)',
+  ctx_retry: '↺ 오류/건너뜀 재시도', ctx_recheck: '🔄 재확인 (새 영상 확인)',
+  ctx_fresh: '⟳ 처음부터 재다운로드', ctx_res_check: '📏 해상도 검사',
+  ctx_size_check: '📦 용량 검사', ctx_missing_check: '🔍 누락 파일 검사',
+  ctx_priority: '★ 최우선 다운로드', ctx_move_active: '📂 진행 중으로 이동',
+  ctx_copy_url: '🔗 URL 복사', ctx_open_video: '▶ 동영상 열기 (데스크톱 헬퍼)',
+  ctx_open_folder: '📁 파일 위치 열기 (데스크톱 헬퍼)',
+  ctx_delete: '🗑 삭제 (작업만)', ctx_delete_files: '🗑 삭제 (파일 포함)',
+  modal_cancel: '취소', modal_confirm: '확인',
+  shutdown_title: '⏻ 종료',
+  shutdown_body: '저장 후 서버를 종료합니까?<br>진행 중인 다운로드는 중단되고 다음 시작 때 이어집니다.',
+  shutdown_confirm_label: '종료',
+  shutdown_done_title: '⏻ 서버 종료됨',
+  shutdown_done_body: '저장 완료 후 종료되었습니다. 다시 켜려면 앱을 재시작하세요.',
+  fresh_confirm_title: '처음부터 재다운로드',
+  fresh_confirm_body: '{n}개 항목을 처음부터 다시 다운로드합니까?',
+  redownload_all_title: '전체 재다운로드',
+  redownload_all_body: '완료된 그룹 {n}개를 모두 처음부터 다시 다운로드합니까?',
+  recheck_all_title: '🔄 전체 재확인',
+  recheck_all_body: '완료된 그룹 {n}개에서 새로 올라온 영상이 있는지 다시 확인합니까?',
+  retry_all_title: '↺ Error/Skip 재시도',
+  retry_all_body: '오류/건너뜀 상태의 영상을 모두 다시 시도합니까?<br><span style="color:var(--fg-dim)">비공개/삭제된 영상은 자동 제외됩니다.</span>',
+  res_check_all_body: '완료 영상 전체의 해상도를 검사합니까?<br>짧은 변이 <b>{height}px 미만</b>이거나 손상된 파일은 재다운로드됩니다.<br>(기준은 ⚙설정에서 변경)',
+  size_check_all_body: '완료 영상 전체의 파일 용량을 검사합니까?<br><b>{size}MB 이하</b>이거나 읽기 실패한 파일은 재다운로드됩니다.<br>(기준은 ⚙설정에서 변경)',
+  res_check_sel_body: '선택한 {n}개 항목의 완료 영상을 검사합니까?<br>짧은 변 <b>{height}px 미만</b>이면 재다운로드됩니다.',
+  size_check_sel_body: '선택한 {n}개 항목의 완료 영상을 검사합니까?<br><b>{size}MB 이하</b>이면 재다운로드됩니다.',
+  missing_check_all_title: '🔍 누락 파일 검사',
+  missing_check_all_body: 'DB에는 완료인데 실제 파일이 없는 영상을 완료 그룹 전체에서 검사합니까?<br>(폴더 전체 스캔 — 시간이 걸릴 수 있음. 재다운로드 전에 결과를 다시 확인합니다.)',
+  missing_check_sel_title: '🔍 누락 파일 검사',
+  missing_check_sel_body: '선택한 {n}개 항목의 완료 영상을 대상으로 파일 존재 여부를 검사합니까?<br>(재다운로드 전에 결과를 다시 확인합니다.)',
+  missing_scan_toast: '🔍 폴더 스캔 중…',
+  missing_none_found: '✅ 검사 {n}개 — 누락 없음{extra}',
+  missing_redownload_title: '🔍 누락 파일 재다운로드',
+  missing_redownload_body: '검사 {checked}개 중 <b>{missing}개</b>의 파일이 폴더에 없습니다.{extra}<pre>{preview}</pre>재다운로드합니까?',
+  missing_redownload_label: '재다운로드',
+  missing_noid_suffix: ' (ID 없음 {n}개 제외)',
+  delete_task_title: '삭제 (작업만)', delete_task_body: '{n}개 작업을 삭제합니까?<br>파일은 유지됩니다.',
+  delete_files_title: '삭제 (파일 포함)', delete_files_body: '{n}개 작업을 삭제합니까?<br>관련 파일도 삭제됩니다.',
+  delete_confirm_label: '삭제',
+  delete_files_confirm_title: '파일 삭제 확인',
+  delete_files_confirm_body: '파일 {n}개를 삭제하시겠습니까?<pre>{preview}</pre>',
+  open_no_file: '⚠ 파일을 찾지 못했습니다 (아직 다운로드 전일 수 있음)',
+  open_video_requested: '▶ 재생 요청됨', open_folder_requested: '📁 탐색기 열기 요청됨',
+  open_helper_fail: '⚠ 데스크톱 헬퍼 연결 실패 — 이 PC에서 클립보드 감시 헬퍼를 먼저 실행하세요',
+  settings_title: '⚙ 설정',
+  s_language: '언어',
+  s_max_concurrent: '동시 다운로드 수 (영상 개수)',
+  s_autosave: '자동 저장 주기 (분, 0=30초)',
+  s_outdir: '출력 폴더',
+  s_res: '해상도 기준 (짧은 변, px)',
+  s_size: '용량 기준 (MB, 이하 재다운로드)',
+  s_autostart: '시작 시 자동으로 전체 시작',
+  s_saveonadd: '그룹 추가 시 즉시 자동 저장',
+  s_small_first: '작은 그룹 우선 다운로드',
+  s_hp_first: '진행률 높은 그룹 우선',
+  s_font: '글자 크기',
+  font_normal: '보통', font_large: '크게', font_xl: '아주 크게', font_xxl: '매우 크게',
+  s_persist_label: '영구 추적할 사이트 패턴 (DB 저장)',
+  s_persist_hint: '한 줄에 하나씩 — URL에 이 중 하나라도 포함되면 영구 추적(이어받기/중복방지/재확인)됩니다. 그 외에는 한 번만 받고 "이번 세션"에만 표시됩니다. 예: youtube.com',
+  s_gallery_template_label: '갤러리 폴더명 형식',
+  s_gallery_template_hint: '사용 가능한 자리표시자: {artist} {title} {id}',
+  s_cookies_label: '🍪 쿠키',
+  s_cookies_saved: '저장됨 ({at})', s_cookies_none: '없음',
+  s_cookies_placeholder: 'cookies.txt 내용 붙여넣기 (Netscape 형식) — 비워두면 기존 유지.\nyt-dlp·gallery-dl 양쪽에 모두 전달됩니다. "Get cookies.txt LOCALLY" 같은 브라우저 확장으로 내보낼 수 있습니다.',
+  s_cookies_clear: '저장된 쿠키 삭제',
+  settings_cancel: '취소', settings_save: '저장', settings_saved_toast: '⚙ 설정 저장됨',
+  state_queued: '대기', state_downloading: '다운로드 중', state_completed: '완료',
+  state_paused: '일시정지', state_error: '오류', state_skipped: '건너뜀',
+  state_resolving: '확인 중', state_cancelled: '취소',
+  stats_summary: '영상: {done}/{total}  |  건너뜀: {skip}  |  다운로드 중: {dling}  |  누적 완료: {cum}',
+  stats_speed: '평균 속도: {speed}  |  다운로드 중: {dling}',
+  stats_speed_idle: '평균 속도: -  |  다운로드 중: 0',
+  add_batch_progress: '📋 {count}개 URL — 순차 추가 중…',
+  already_downloaded: '이미 다운로드됨',
+  autosave_done: '💾 자동 저장 완료',
+  binary_not_found: '{tool}를 찾을 수 없습니다',
+  bulk_recheck_progress: '🔄 {count}개 확인 중…',
+  bulk_redownload_progress: '🔄 {count}개 초기화 중…',
+  bulk_retry_summary: '↺ 재시도 {retried}개',
+  bulk_retry_summary_excluded: '↺ 재시도 {retried}개 (비공개/삭제됨 {excluded}개 제외)',
+  cookies_cleared: '🍪 쿠키 삭제됨',
+  cookies_invalid_format: '⚠ 쿠키 저장 실패 — cookies.txt(Netscape, 탭 구분) 형식이 아닙니다',
+  cookies_save_failed: '⚠ 쿠키 저장 실패: {error}',
+  cookies_saved: '🍪 쿠키 저장됨',
+  db_save_failed: '⚠ 데이터베이스 저장 실패: {error}',
+  download_exception: '다운로드 오류: {error}',
+  downloading_progress: '다운로드 중… {pct}% ({speed})',
+  exception: '오류: {error}',
+  exit_code: '종료 코드 {code}',
+  exit_code_reason: '종료 코드 {code} | {reason}',
+  ffprobe_missing: '⚠ ffprobe를 찾을 수 없습니다. ffmpeg를 설치하세요.',
+  file_delete_done: '🗑 파일 {deleted}개 삭제 완료',
+  file_delete_done_failed: '🗑 파일 {deleted}개 삭제 완료 ({failed}개 실패)',
+  file_delete_progress: '🗑 파일 삭제 중… {done}/{total}',
+  filepath_backfill_done: '📁 파일 경로 인덱스 구축 완료 ({count}개)',
+  filepath_backfill_save_failed: '파일 경로 백필 저장 실패: {error}',
+  folder_scan_failed: '폴더 스캔 실패: {error}',
+  fresh_restart: '처음부터 재다운로드…',
+  gallery_already_exists: '⤵ 이미 존재함 — {path}',
+  gallery_done: '✓ 완료 — {path}',
+  gallery_downloading: '다운로드 중…',
+  gallery_downloading_count: '다운로드 중… (예상 {count}개)',
+  group_already_rechecking: '⏳ 이미 재확인 중인 그룹입니다',
+  group_progress: '남은 영상 {remaining}개  |  완료 {done}개',
+  group_recheck_existing: '🔁 기존 그룹 — 새 영상 확인 중…',
+  group_stopped: '그룹 정지됨',
+  manual_save_done: '💾 저장 완료',
+  missing_requeue: '🔍 파일 없음 {count}개 재다운로드 대기',
+  missing_requeue_msg: '파일 없음 — 재다운로드 대기',
+  moved_to_active: '진행 중으로 이동됨',
+  no_completed_to_check: '검사할 완료 영상이 없습니다',
+  no_done_groups: '완료된 그룹 없음',
+  output_dir_empty_abort: '출력 폴더에서 영상 파일을 하나도 찾지 못했습니다 — 마운트가 빠졌을 수 있어 중단합니다',
+  output_dir_missing: '출력 폴더가 없습니다: {path} — 마운트 상태를 확인하세요',
+  paused_msg: '일시정지',
+  recheck_failed: '재확인 실패: {error}',
+  rechecking: '재확인 중…',
+  res_check_collecting: '📏 파일 목록 수집 중…',
+  res_check_no_targets: '📏 검사할 완료 영상이 없습니다',
+  res_check_progress: '📏 해상도 검사 중… {done}/{total}',
+  res_check_summary: '📏 검사 {total}개 — 재다운로드 {redownload}개',
+  res_check_summary_missing: '📏 검사 {total}개 — 재다운로드 {redownload}개, 파일 없음 {missing}개',
+  resolution_low_requeue: '해상도 미달 — 재다운로드 대기',
+  resolve_error: '목록 확인 오류: {reason}',
+  resolving_list: '목록 확인 중…',
+  resuming: '재개 중…',
+  retry_summary_excluded: '↺ 재시도 {retried}개 — 비공개/삭제됨 {excluded}개 제외',
+  size_check_collecting: '📦 파일 목록 수집 중…',
+  size_check_no_targets: '📦 검사할 완료 영상이 없습니다',
+  size_check_progress: '📦 용량 검사 중… {done}/{total}',
+  size_check_summary: '📦 검사 {total}개 — {threshold_mb}MB 이하 재다운로드 {redownload}개',
+  size_check_summary_missing: '📦 검사 {total}개 — 재다운로드 {redownload}개, 파일 없음 {missing}개',
+  size_low_requeue: '용량 미달 — 재다운로드 대기',
+  starting: '시작 중…',
+  stopped_by_user: '사용자가 정지함',
+  stopped_task: '정지됨',
+  url_unsupported: 'yt-dlp와 gallery-dl 모두 지원하지 않는 URL입니다. {reason}',
+  video_completed: '✓ 완료',
+  video_done: '✓ 완료',
+  video_done_multi: '✓ 완료 ({count}개)',
+},
+};
+
+let LANG = localStorage.getItem('lang') === 'ko' ? 'ko' : 'en';
+function t(key, params) {
+  const tpl = (MSG[LANG] && MSG[LANG][key]) || (MSG.en && MSG.en[key]) || key;
+  if (!params) return tpl;
+  return tpl.replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined && params[k] !== null ? params[k] : ''));
+}
+function decodeMsg(raw) {
+  if (!raw) return '';
+  const i = raw.indexOf(':');
+  const code = i === -1 ? raw : raw.slice(0, i);
+  if (!(MSG.en && Object.prototype.hasOwnProperty.call(MSG.en, code))) return raw;
+  let params = {};
+  if (i !== -1) {
+    try { params = JSON.parse(raw.slice(i + 1)); } catch (e) { return raw; }
+  }
+  return t(code, params);
+}
+
+// ───────── state ─────────
+let TAB = 'active';
+let SNAP = { active: [], done: [], orphans: [], ephemeral: [], stats: {}, done_status: '' };
+let EXPANDED = new Set(JSON.parse(localStorage.getItem('expanded') || '[]'));
+let SELECTED = new Set();
+let LAST_CLICK_ID = null;
+let ASC_DONE = false;
+let FETCH_TIMER = null, LAST_FETCH = 0, PENDING = false;
+const MIN_FETCH_MS = 500;
+
+// ───────── helpers ─────────
+const $ = id => document.getElementById(id);
+function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+async function api(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body || {}) });
+  if (!r.ok) { toast(t('request_failed', { path })); return null; }
+  return r.json();
+}
+function toast(msg) {
+  const d = document.createElement('div');
+  d.className = 'toast'; d.textContent = msg;
+  $('toasts').appendChild(d);
+  setTimeout(() => d.remove(), 3500);
+}
+function saveExpanded() { localStorage.setItem('expanded', JSON.stringify([...EXPANDED])); }
+
+// ───────── static text (re-applied whenever the language changes) ─────────
+function applyStaticText() {
+  document.documentElement.lang = LANG;
+  $('urlbox').placeholder = t('url_placeholder');
+  $('btn-add').textContent = t('btn_add');
+  $('btn-start-all').textContent = t('btn_start_all');
+  $('btn-stop-all').textContent = t('btn_stop_all');
+  $('btn-save').textContent = t('btn_save');
+  $('btn-settings').textContent = t('btn_settings');
+  $('btn-shutdown').textContent = t('btn_shutdown');
+  $('search').placeholder = t('search_placeholder');
+  $('tab-active').querySelector('.lbl').textContent = t('tab_active');
+  $('tab-done').querySelector('.lbl').textContent = t('tab_done');
+  $('tab-ephemeral').querySelector('.lbl').textContent = t('tab_ephemeral');
+  $('tab-ephemeral').title = t('tab_ephemeral_title');
+  $('opt-sort-modified').textContent = t('sort_modified');
+  $('opt-sort-created').textContent = t('sort_created');
+  $('opt-sort-name').textContent = t('sort_name');
+  $('asc-btn').textContent = ASC_DONE ? t('asc_asc') : t('asc_desc');
+  $('btn-recheck-all').textContent = t('done_recheck_all');
+  $('btn-retry-all').textContent = t('done_retry_all');
+  $('btn-redownload-all').textContent = t('done_redownload_all');
+  $('btn-res-check-all').textContent = t('done_res_check');
+  $('btn-size-check-all').textContent = t('done_size_check');
+  $('btn-missing-check-all').textContent = t('done_missing_check');
+  $('th-name').textContent = t('col_name');
+  $('th-state').textContent = t('col_state');
+  $('th-progress').textContent = t('col_progress');
+  $('th-speed').textContent = t('col_speed');
+  $('th-message').textContent = t('col_message');
+  $('outdir').title = t('outdir_title');
+  buildCtx();
+}
+
+// ───────── data fetch (SSE signal → throttled re-fetch) ─────────
+async function fetchState() {
+  LAST_FETCH = Date.now(); PENDING = false;
+  const q = encodeURIComponent($('search').value.trim());
+  const exp = encodeURIComponent([...EXPANDED].join(','));
+  try {
+    const r = await fetch(`/api/state?q=${q}&expanded=${exp}`);
+    SNAP = await r.json();
+    render();
+  } catch (e) { /* server restarting etc. — SSE reconnect will pick it back up */ }
+}
+function scheduleFetch() {
+  if (PENDING) return;
+  const wait = Math.max(0, MIN_FETCH_MS - (Date.now() - LAST_FETCH));
+  PENDING = true;
+  clearTimeout(FETCH_TIMER);
+  FETCH_TIMER = setTimeout(fetchState, wait);
+}
+function connectSSE() {
+  const es = new EventSource('/api/events');
+  es.onopen  = () => { $('conn').className = 'ok'; $('conn').textContent = t('conn_connected'); scheduleFetch(); };
+  es.onerror = () => { $('conn').className = 'bad'; $('conn').textContent = t('conn_reconnecting'); };
+  es.onmessage = ev => {
+    const d = JSON.parse(ev.data);
+    (d.toasts || []).forEach(m => toast(decodeMsg(m)));
+    scheduleFetch();
+  };
+}
+
+// ───────── render ─────────
+function stateCls(s) { return 'st-' + s; }
+function stateLabel(s) { return t('state_' + s) || s; }
+function fmtSpeed(bps) {
+  if (!bps || bps <= 0) return '0 B/s';
+  const units = ['B/s','KB/s','MB/s','GB/s'];
+  let v = bps;
+  for (const u of units) {
+    if (v < 1024 || u === units[units.length - 1]) return v.toFixed(1) + ' ' + u;
+    v /= 1024;
+  }
+}
+function groupRow(g, showRank) {
+  const exp = EXPANDED.has(g.id);
+  const arrow = (g.expected > 0 || exp) ? (exp ? '▼' : '▶') : '·';
+  const rankTxt = showRank ? `#${g.rank} 📁` : `✅ ${g.modified_at ? new Date(g.modified_at * 1000).toISOString().slice(0,10) : ''}`;
+  const cnt = `${g.completed}/${g.expected === null ? '?' : g.expected} (${g.pct}%)`;
+  const dl = g.dling ? `${g.dling}` : '';
+  const prio = g.priority ? '<span class="prio">★</span> ' : '';
+  const msg = decodeMsg(g.message);
+  return `<tr class="row grouprow g-${g.state} ${SELECTED.has(g.id) ? 'sel' : ''}" data-id="${g.id}" data-kind="group" draggable="${TAB === 'active'}">
+    <td><span class="expander" data-exp="${g.id}">${arrow}</span>${rankTxt}</td>
+    <td class="namecell" title="${esc(g.url)}">${prio}${esc(g.url)}</td>
+    <td class="${stateCls(g.state)}">${esc(stateLabel(g.state))}</td>
+    <td>${cnt}</td><td>${esc(dl)}</td>
+    <td class="msgcell" title="${esc(msg)}">${esc(msg)}</td></tr>`;
+}
+function videoRow(v) {
+  const icons = { completed:'✓', error:'✗', downloading:'⬇', paused:'⏸', skipped:'⤵', queued:'·', cancelled:'✕' };
+  const pct = v.pct !== null && v.pct !== undefined ? `<span class="pbar"><i style="width:${v.pct}%"></i></span>${v.pct}%` : '';
+  const speed = v.speed_bps ? fmtSpeed(v.speed_bps) : '';
+  const msg = decodeMsg(v.message);
+  return `<tr class="row vidrow ${SELECTED.has(v.id) ? 'sel' : ''}" data-id="${v.id}" data-kind="video">
+    <td class="${stateCls(v.state)}">${icons[v.state] || '·'}</td>
+    <td class="namecell" title="${esc(v.url)}">${esc(v.title || v.url)}</td>
+    <td class="${stateCls(v.state)}">${esc(stateLabel(v.state))}</td>
+    <td>${pct}</td><td>${esc(speed)}</td>
+    <td class="msgcell" title="${esc(msg)}">${esc(msg)}</td></tr>`;
+}
+function ephemeralRow(e) {
+  const icons = { resolving:'…', downloading:'⬇', completed:'✓', error:'✗' };
+  const kindTxt = e.kind === 'gallery' ? t('kind_gallery') : t('kind_video');
+  const msg = decodeMsg(e.message);
+  return `<tr class="row vidrow" data-id="${e.id}" data-kind="ephemeral">
+    <td class="${stateCls(e.state)}">${icons[e.state] || '·'}</td>
+    <td class="namecell" title="${esc(e.url)}">${kindTxt} — ${esc(e.title || e.url)}</td>
+    <td class="${stateCls(e.state)}">${esc(stateLabel(e.state))}</td>
+    <td></td><td></td>
+    <td class="msgcell" title="${esc(msg)}">${esc(msg)}</td></tr>`;
+}
+function statsLine() {
+  const s = SNAP.stats || {};
+  $('count-str').textContent = t('stats_summary', {
+    done: s.video_done || 0, total: s.video_total || 0, skip: s.skipped || 0,
+    dling: s.downloading || 0, cum: s.cum_total || 0 });
+  $('speed-str').textContent = s.downloading
+    ? t('stats_speed', { speed: fmtSpeed(s.avg_speed_bps), dling: s.downloading })
+    : t('stats_speed_idle');
+}
+function render() {
+  if (TAB === 'ephemeral') {
+    $('tbody').innerHTML = (SNAP.ephemeral || []).map(ephemeralRow).join('');
+    $('n-ephemeral').textContent = (SNAP.ephemeral || []).length;
+    statsLine();
+    $('outdir').textContent = '📂 ' + (SNAP.output_dir || '');
+    return;
+  }
+  let groups = TAB === 'active' ? SNAP.active : SNAP.done.slice();
+  if (TAB === 'done') {
+    const k = $('done-sort').value;
+    const key = { created: g => g.created_at, modified: g => g.modified_at, name: g => (g.url || '').toLowerCase() }[k];
+    groups.sort((a, b) => (key(a) > key(b) ? 1 : -1) * (ASC_DONE ? 1 : -1));
+  }
+  let html = '';
+  for (const g of groups) {
+    html += groupRow(g, TAB === 'active');
+    if (g.children) for (const v of g.children) html += videoRow(v);
+  }
+  if (TAB === 'active') for (const v of (SNAP.orphans || [])) html += videoRow(v);
+  $('tbody').innerHTML = html;
+  $('n-active').textContent = SNAP.active.length;
+  $('n-done').textContent = SNAP.done.length;
+  $('n-ephemeral').textContent = (SNAP.ephemeral || []).length;
+  statsLine();
+  $('done-status').textContent = decodeMsg(SNAP.done_status || '');
+  $('outdir').textContent = '📂 ' + (SNAP.output_dir || '');
+}
+
+// ───────── tabs / search / done sort ─────────
+function setTab(tab) {
+  TAB = tab; SELECTED.clear();
+  $('tab-active').classList.toggle('on', tab === 'active');
+  $('tab-done').classList.toggle('on', tab === 'done');
+  $('tab-ephemeral').classList.toggle('on', tab === 'ephemeral');
+  $('done-controls').style.display = tab === 'done' ? 'flex' : 'none';
+  render();
+}
+function toggleAsc() {
+  ASC_DONE = !ASC_DONE;
+  $('asc-btn').textContent = ASC_DONE ? t('asc_asc') : t('asc_desc');
+  render();
+}
+let searchT = null;
+$('search').addEventListener('input', () => { clearTimeout(searchT); searchT = setTimeout(fetchState, 300); });
+
+// ───────── selection / expand ─────────
+$('tbody').addEventListener('click', e => {
+  const expEl = e.target.closest('.expander');
+  if (expEl) {
+    const gid = expEl.dataset.exp;
+    EXPANDED.has(gid) ? EXPANDED.delete(gid) : EXPANDED.add(gid);
+    saveExpanded(); fetchState();
+    return;
+  }
+  const tr = e.target.closest('tr.row');
+  if (!tr) return;
+  const id = tr.dataset.id;
+  if (e.ctrlKey || e.metaKey) {
+    SELECTED.has(id) ? SELECTED.delete(id) : SELECTED.add(id);
+  } else if (e.shiftKey && LAST_CLICK_ID) {
+    const rows = [...document.querySelectorAll('tr.row')].map(r => r.dataset.id);
+    const a = rows.indexOf(LAST_CLICK_ID), b = rows.indexOf(id);
+    if (a >= 0 && b >= 0) rows.slice(Math.min(a,b), Math.max(a,b)+1).forEach(x => SELECTED.add(x));
+  } else {
+    SELECTED.clear(); SELECTED.add(id);
+  }
+  LAST_CLICK_ID = id;
+  render();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'a' && (e.ctrlKey || e.metaKey) && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'INPUT') {
+    e.preventDefault();
+    document.querySelectorAll('tr.row').forEach(r => SELECTED.add(r.dataset.id));
+    render();
+  }
+});
+
+// ───────── add urls ─────────
+async function addUrls() {
+  const text = $('urlbox').value.trim();
+  if (!text) return;
+  $('urlbox').value = '';
+  await api('/api/add', { urls: text });
+}
+$('urlbox').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addUrls(); }
+});
+
+// ───────── context menu ─────────
+function buildCtx() {
+  const items = [
+    { label: t('ctx_start'),        act: () => doAction('start') },
+    { label: t('ctx_pause'),        act: () => doAction('pause') },
+    { label: t('ctx_stop'),         act: () => doAction('stop') },
+    { hr: 1 },
+    { label: t('ctx_retry'),        act: () => doAction('retry') },
+    { label: t('ctx_recheck'),      act: () => doAction('recheck') },
+    { label: t('ctx_fresh'),        act: () => confirmFresh() },
+    { label: t('ctx_res_check'),    act: () => confirmResCheckSel() },
+    { label: t('ctx_size_check'),   act: () => confirmSizeCheckSel() },
+    { label: t('ctx_missing_check'),act: () => confirmMissingCheckSel() },
+    { hr: 1 },
+    { label: t('ctx_priority'),     act: () => doAction('priority') },
+    { label: t('ctx_move_active'),  act: () => doAction('move_active') },
+    { label: t('ctx_copy_url'),     act: copyUrls },
+    { hr: 1 },
+    { label: t('ctx_open_video'),   act: () => openInDesktop(true) },
+    { label: t('ctx_open_folder'),  act: () => openInDesktop(false) },
+    { hr: 1 },
+    { label: t('ctx_delete'),       act: () => confirmDelete(false), danger: 1 },
+    { label: t('ctx_delete_files'), act: () => confirmDelete(true),  danger: 1 },
+  ];
+  const m = $('ctxmenu');
+  m.innerHTML = '';
+  for (const it of items) {
+    if (it.hr) { m.appendChild(document.createElement('hr')); continue; }
+    const d = document.createElement('div');
+    d.textContent = it.label;
+    if (it.danger) d.className = 'danger';
+    d.onclick = () => { hideCtx(); it.act(); };
+    m.appendChild(d);
+  }
+}
+$('tablewrap').addEventListener('contextmenu', e => {
+  const tr = e.target.closest('tr.row');
+  if (!tr) return;
+  e.preventDefault();
+  if (!SELECTED.has(tr.dataset.id)) { SELECTED.clear(); SELECTED.add(tr.dataset.id); LAST_CLICK_ID = tr.dataset.id; render(); }
+  const m = $('ctxmenu');
+  m.style.display = 'block';
+  m.style.left = Math.min(e.clientX, innerWidth - m.offsetWidth - 8) + 'px';
+  m.style.top  = Math.min(e.clientY, innerHeight - m.offsetHeight - 8) + 'px';
+});
+function hideCtx() { $('ctxmenu').style.display = 'none'; }
+document.addEventListener('click', hideCtx);
+document.addEventListener('scroll', hideCtx, true);
+
+async function doAction(action) {
+  if (!SELECTED.size) return;
+  await api('/api/action', { ids: [...SELECTED], action });
+}
+async function copyText(text) {
+  // navigator.clipboard is unavailable on plain HTTP (non-secure context) — fall back to execCommand.
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  ta.remove();
+  return ok;
+}
+async function copyUrls() {
+  const ids = new Set(SELECTED);
+  const urls = [];
+  for (const g of [...SNAP.active, ...SNAP.done]) {
+    if (ids.has(g.id)) urls.push(g.url);
+    for (const v of (g.children || [])) if (ids.has(v.id)) urls.push(v.url);
+  }
+  if (!urls.length) { toast(t('copy_urls_none')); return; }
+  const ok = await copyText(urls.join('\n'));
+  toast(ok ? t('copy_urls_ok', { n: urls.length }) : t('copy_fail'));
+}
+$('outdir').onclick = async () => {
+  const ok = await copyText(SNAP.output_dir || '');
+  toast(ok ? t('copy_ok') : t('copy_fail'));
+};
+
+// ───────── open in desktop helper ─────────
+// Browsers can't open a file explorer/player directly for security reasons.
+// The optional clipboard-watcher helper (client/) runs an "open" server on
+// 127.0.0.1:8687 on the machine you're downloading to, and does it for you.
+const HELPER = 'http://127.0.0.1:8687';
+async function openInDesktop(play) {
+  if (!SELECTED.size) return;
+  const r = await api('/api/locate', { id: [...SELECTED][0] });
+  if (!r || !r.rel) { toast(t('open_no_file')); return; }
+  try {
+    const res = await fetch(`${HELPER}/open?play=${play ? 1 : 0}&kind=${r.kind}&rel=${encodeURIComponent(r.rel)}`);
+    if (!res.ok) throw new Error();
+    toast(play ? t('open_video_requested') : t('open_folder_requested'));
+  } catch (e) {
+    toast(t('open_helper_fail'));
+  }
+}
+$('tbody').addEventListener('dblclick', e => {
+  const tr = e.target.closest('tr.vidrow');
+  if (!tr) return;
+  SELECTED.clear(); SELECTED.add(tr.dataset.id); render();
+  openInDesktop(true);
+});
+
+// ───────── save + shut down ─────────
+function confirmShutdown() {
+  confirmModal(t('shutdown_title'), t('shutdown_body'), async () => {
+    const r = await api('/api/shutdown');
+    if (r && r.ok) showModal(`<h3>${esc(t('shutdown_done_title'))}</h3><div>${t('shutdown_done_body')}</div>`);
+  }, t('shutdown_confirm_label'));
+}
+
+// ───────── modal helpers ─────────
+function showModal(html) { $('modal').innerHTML = html; $('modal-bg').style.display = 'flex'; }
+function hideModal() { $('modal-bg').style.display = 'none'; }
+$('modal-bg').addEventListener('click', e => { if (e.target === $('modal-bg')) hideModal(); });
+
+function confirmModal(title, body, onOk, okLabel) {
+  showModal(`<h3>${esc(title)}</h3><div style="margin-bottom:6px">${body}</div>
+    <div class="btns"><button onclick="hideModal()">${esc(t('modal_cancel'))}</button>
+    <button class="primary" id="modal-ok">${esc(okLabel || t('modal_confirm'))}</button></div>`);
+  $('modal-ok').onclick = () => { hideModal(); onOk(); };
+}
+function confirmFresh() {
+  if (!SELECTED.size) return;
+  confirmModal(t('fresh_confirm_title'), t('fresh_confirm_body', { n: SELECTED.size }), () => doAction('fresh'));
+}
+function confirmRedownloadAll() {
+  confirmModal(t('redownload_all_title'), t('redownload_all_body', { n: SNAP.done.length }), () => doneOp('redownload_all'));
+}
+function confirmRecheckAll() {
+  confirmModal(t('recheck_all_title'), t('recheck_all_body', { n: SNAP.done.length }), () => doneOp('recheck_all'));
+}
+function confirmRetryAll() {
+  confirmModal(t('retry_all_title'), t('retry_all_body'), () => doneOp('retry_all'));
+}
+async function resCheckAll() {
+  const s = await (await fetch('/api/settings')).json();
+  confirmModal(t('done_res_check'), t('res_check_all_body', { height: s.res_filter_height }), () => api('/api/res_check', { all_done: true }));
+}
+async function sizeCheckAll() {
+  const s = await (await fetch('/api/settings')).json();
+  confirmModal(t('done_size_check'), t('size_check_all_body', { size: s.size_filter_mb }), () => api('/api/size_check', { all_done: true }));
+}
+async function confirmResCheckSel() {
+  if (!SELECTED.size) return;
+  const ids = [...SELECTED];
+  const s = await (await fetch('/api/settings')).json();
+  confirmModal(t('done_res_check'), t('res_check_sel_body', { n: ids.length, height: s.res_filter_height }), () => api('/api/res_check', { ids }));
+}
+async function confirmSizeCheckSel() {
+  if (!SELECTED.size) return;
+  const ids = [...SELECTED];
+  const s = await (await fetch('/api/settings')).json();
+  confirmModal(t('done_size_check'), t('size_check_sel_body', { n: ids.length, size: s.size_filter_mb }), () => api('/api/size_check', { ids }));
+}
+async function doneOp(op) { await api('/api/done_ops', { op }); }
+
+// ───────── missing-file check (2-step: confirm the scan result before redownloading) ─────────
+function missingCheckAll() {
+  confirmModal(t('missing_check_all_title'), t('missing_check_all_body'), () => runMissingCheck({ all_done: true }));
+}
+function confirmMissingCheckSel() {
+  if (!SELECTED.size) return;
+  const ids = [...SELECTED];
+  confirmModal(t('missing_check_sel_title'), t('missing_check_sel_body', { n: ids.length }), () => runMissingCheck({ ids }));
+}
+async function runMissingCheck(payload) {
+  toast(t('missing_scan_toast'));
+  const r = await api('/api/missing_check', payload);
+  if (!r) return;
+  if (r.error) { toast(decodeMsg(r.error)); return; }
+  const extra = r.noid ? t('missing_noid_suffix', { n: r.noid }) : '';
+  if (!r.missing.length) { toast(t('missing_none_found', { n: r.checked, extra })); return; }
+  const preview = r.missing.slice(0, 12).map(m => esc(m.title)).join('\n') +
+    (r.missing.length > 12 ? `\n… +${r.missing.length - 12}` : '');
+  confirmModal(t('missing_redownload_title'),
+    t('missing_redownload_body', { missing: r.missing.length, checked: r.checked, extra, preview }),
+    () => api('/api/missing_confirm', { token: r.token }), t('missing_redownload_label'));
+}
+
+// ───────── delete (2-step confirmation) ─────────
+function confirmDelete(withFiles) {
+  if (!SELECTED.size) return;
+  const title = withFiles ? t('delete_files_title') : t('delete_task_title');
+  const body  = withFiles ? t('delete_files_body', { n: SELECTED.size }) : t('delete_task_body', { n: SELECTED.size });
+  confirmModal(title, body, async () => {
+    const r = await api('/api/delete', { ids: [...SELECTED], with_files: withFiles });
+    SELECTED.clear();
+    if (r && r.token && r.files.length) {
+      const preview = r.files.slice(0, 8).map(esc).join('\n') +
+        (r.files.length > 8 ? `\n… +${r.files.length - 8}` : '');
+      confirmModal(t('delete_files_confirm_title'),
+        t('delete_files_confirm_body', { n: r.files.length, preview }),
+        () => api('/api/delete_files', { token: r.token }), t('delete_confirm_label'));
+    }
+  }, t('delete_confirm_label'));
+}
+
+// ───────── drag reorder (active tab groups only) ─────────
+let dragId = null;
+$('tbody').addEventListener('dragstart', e => {
+  const tr = e.target.closest('tr.grouprow');
+  if (!tr || TAB !== 'active') { e.preventDefault(); return; }
+  dragId = tr.dataset.id;
+  e.dataTransfer.effectAllowed = 'move';
+});
+$('tbody').addEventListener('dragover', e => {
+  const tr = e.target.closest('tr.grouprow');
+  if (!tr || !dragId) return;
+  e.preventDefault();
+  document.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+  tr.classList.add('drag-over');
+});
+$('tbody').addEventListener('drop', async e => {
+  const tr = e.target.closest('tr.grouprow');
+  document.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+  if (!tr || !dragId || tr.dataset.id === dragId) { dragId = null; return; }
+  e.preventDefault();
+  // Rebuild the active-group order array with dragId inserted before the drop target.
+  const order = SNAP.active.map(g => g.id).filter(id => id !== dragId);
+  order.splice(order.indexOf(tr.dataset.id), 0, dragId);
+  // Append completed groups too, to keep the full ordering.
+  for (const g of SNAP.done) order.push(g.id);
+  dragId = null;
+  await api('/api/reorder', { group_ids: order });
+});
+$('tbody').addEventListener('dragend', () => {
+  document.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+  dragId = null;
+});
+
+// ───────── settings ─────────
+async function openSettings() {
+  const r = await fetch('/api/settings'); const s = await r.json();
+  const cookiesInfo = s.cookies_status && s.cookies_status.saved
+    ? t('s_cookies_saved', { at: s.cookies_status.at }) : t('s_cookies_none');
+  showModal(`<h3>${esc(t('settings_title'))}</h3>
+    <div class="frow"><label>${esc(t('s_language'))}</label><select id="s-lang">
+      <option value="en" ${LANG === 'en' ? 'selected' : ''}>English</option>
+      <option value="ko" ${LANG === 'ko' ? 'selected' : ''}>한국어</option>
+    </select></div>
+    <div class="frow"><label>${esc(t('s_max_concurrent'))}</label><input type="number" id="s-max" min="1" max="64" value="${s.max_concurrent}"></div>
+    <div class="frow"><label>${esc(t('s_autosave'))}</label><input type="number" id="s-autosave" min="0" max="120" value="${s.autosave_minutes}"></div>
+    <div class="frow"><label>${esc(t('s_outdir'))}</label><input type="text" id="s-outdir" class="wide" value="${esc(s.output_dir)}"></div>
+    <div class="frow"><label>${esc(t('s_res'))}</label><input type="number" id="s-res" min="144" max="4320" value="${s.res_filter_height}"></div>
+    <div class="frow"><label>${esc(t('s_size'))}</label><input type="number" id="s-size" min="1" max="100000" value="${s.size_filter_mb}"></div>
+    <div class="frow"><label><input type="checkbox" id="s-autostart" ${s.autostart ? 'checked' : ''}> ${esc(t('s_autostart'))}</label></div>
+    <div class="frow"><label><input type="checkbox" id="s-saveonadd" ${s.save_on_add ? 'checked' : ''}> ${esc(t('s_saveonadd'))}</label></div>
+    <div class="frow"><label><input type="checkbox" id="s-small" ${s.small_group_first ? 'checked' : ''}> ${esc(t('s_small_first'))}</label></div>
+    <div class="frow"><label><input type="checkbox" id="s-hp" ${s.high_progress_first ? 'checked' : ''}> ${esc(t('s_hp_first'))}</label></div>
+    <div class="frow"><label>${esc(t('s_font'))}</label><select id="s-font">
+      <option value="10" ${s.font_scale == 10 ? 'selected' : ''}>${esc(t('font_normal'))}</option>
+      <option value="13" ${s.font_scale == 13 ? 'selected' : ''}>${esc(t('font_large'))}</option>
+      <option value="16" ${s.font_scale == 16 ? 'selected' : ''}>${esc(t('font_xl'))}</option>
+      <option value="20" ${s.font_scale == 20 ? 'selected' : ''}>${esc(t('font_xxl'))}</option>
+    </select></div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:12px 0">
+    <div class="frow"><label>${esc(t('s_gallery_template_label'))}</label><input type="text" id="s-gallery-tpl" class="wide" value="${esc(s.gallery_folder_template)}"></div>
+    <div class="hint">${esc(t('s_gallery_template_hint'))}</div>
+    <div class="frow" style="align-items:flex-start"><label style="padding-top:6px">${esc(t('s_persist_label'))}</label></div>
+    <textarea id="s-persist" class="mono" rows="3">${esc(s.persist_patterns)}</textarea>
+    <div class="hint">${esc(t('s_persist_hint'))}</div>
+    <div class="frow"><label>${esc(t('s_cookies_label'))}</label>
+      <span style="color:${s.cookies_status && s.cookies_status.saved ? 'var(--green)' : 'var(--fg-dim)'}">${esc(cookiesInfo)}</span></div>
+    <textarea id="s-cookies" class="mono" style="height:84px" placeholder="${esc(t('s_cookies_placeholder'))}"></textarea>
+    <div class="frow"><label><input type="checkbox" id="s-ck-clear"> ${esc(t('s_cookies_clear'))}</label></div>
+    <div class="btns"><button onclick="hideModal()">${esc(t('settings_cancel'))}</button>
+    <button class="primary" onclick="saveSettings()">${esc(t('settings_save'))}</button></div>`);
+}
+async function saveSettings() {
+  const newLang = $('s-lang').value;
+  const s = {
+    max_concurrent:      +$('s-max').value,
+    autosave_minutes:    +$('s-autosave').value,
+    output_dir:          $('s-outdir').value,
+    res_filter_height:   +$('s-res').value,
+    size_filter_mb:      +$('s-size').value,
+    autostart:           $('s-autostart').checked,
+    save_on_add:         $('s-saveonadd').checked,
+    small_group_first:   $('s-small').checked,
+    high_progress_first: $('s-hp').checked,
+    font_scale:          +$('s-font').value,
+    gallery_folder_template: $('s-gallery-tpl').value,
+    persist_patterns:    $('s-persist').value,
+    cookies:             $('s-cookies').value,
+    cookies_clear:       $('s-ck-clear').checked,
+  };
+  await api('/api/settings', s);
+  applyFont(s.font_scale);
+  if (newLang !== LANG) {
+    LANG = newLang;
+    localStorage.setItem('lang', LANG);
+    applyStaticText();
+  }
+  hideModal(); toast(t('settings_saved_toast'));
+  fetchState();
+}
+function applyFont(scale) {
+  document.documentElement.style.setProperty('--fs', (4 + (+scale || 10)) + 'px');
+}
+
+// ───────── init ─────────
+applyStaticText();
+connectSSE();
+fetchState();
+fetch('/api/settings').then(r => r.json()).then(s => applyFont(s.font_scale)).catch(() => {});
+</script>
+</body>
+</html>
