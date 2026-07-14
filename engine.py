@@ -863,6 +863,15 @@ class Engine:
                     extractor = ""
             else:
                 probe_err = (proc.stderr or "").strip()
+                # yt-dlp tags nearly every log line with the matched
+                # extractor, e.g. "ERROR: [youtube] id: Video unavailable".
+                # That means yt-dlp *does* support this site and the failure
+                # is about the content (private/deleted/region-locked), not
+                # about the URL itself - very different from "no extractor
+                # matched at all", so it shouldn't fall through to gallery-dl.
+                m = re.search(r'\[([\w:.-]+)\]', probe_err)
+                if m and m.group(1).lower() != "generic":
+                    extractor = m.group(1).lower()
         except Exception as e:
             probe_err = str(e)
         finally:
