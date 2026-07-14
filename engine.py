@@ -635,9 +635,12 @@ class Engine:
 
     def _matches_persist(self, url):
         """True if `url` matches one of the user's "track forever" patterns
-        (plain case-insensitive substring match - see settings)."""
+        (plain case-insensitive substring match - see settings). A lone "*"
+        pattern means "track everything"."""
         if not self._cfg_persist_patterns:
             return False
+        if "*" in self._cfg_persist_patterns:
+            return True
         ul = url.lower()
         return any(p in ul for p in self._cfg_persist_patterns)
 
