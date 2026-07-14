@@ -10,6 +10,7 @@ Type=simple
 #   systemctl daemon-reload && systemctl enable --now ytdlp-gallery-dl-gui
 WorkingDirectory=/opt/ytdlp-gallery-dl-gui
 Environment=APP_HOME=/opt/ytdlp-gallery-dl-gui/data
+Environment=APP_BIN_DIR=/opt/ytdlp-gallery-dl-gui
 Environment=APP_DEFAULT_OUTPUT=/opt/ytdlp-gallery-dl-gui/download
 ExecStart=/opt/ytdlp-gallery-dl-gui/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8686 --timeout-graceful-shutdown 5
 Restart=on-failure

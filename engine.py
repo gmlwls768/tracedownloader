@@ -31,6 +31,11 @@ from datetime import datetime, timezone
 UTC = timezone.utc
 
 BASE_DIR = os.environ.get("APP_HOME") or os.path.dirname(os.path.abspath(__file__))
+# Where bundled/auto-downloaded tool binaries live. Deliberately separate
+# from BASE_DIR (the *data* folder, e.g. an APP_HOME pointed at a mounted
+# volume): app.py and deploy/install.sh both drop yt-dlp/gallery-dl/ffmpeg
+# next to the app itself, not next to the database.
+BIN_SEARCH_DIR = os.environ.get("APP_BIN_DIR") or BASE_DIR
 
 
 def _find_bin(name):
@@ -39,7 +44,7 @@ def _find_bin(name):
     (Windows) or PATH lookup (Linux/Mac), so only the explicit bin/
     candidates need an .exe suffix spelled out."""
     names = (name, name + ".exe") if os.name == "nt" else (name,)
-    for folder in (os.path.join(BASE_DIR, "bin"), BASE_DIR):
+    for folder in (os.path.join(BIN_SEARCH_DIR, "bin"), BIN_SEARCH_DIR):
         for n in names:
             candidate = os.path.join(folder, n)
             if os.path.isfile(candidate) and os.access(candidate, os.X_OK):

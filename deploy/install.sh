@@ -26,10 +26,10 @@ curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -
 chmod +x bin/yt-dlp
 bin/yt-dlp --version
 
-# gallery-dl — standalone Linux binary. If the release asset is ever
-# unavailable, fall back to installing it into the venv and linking it into
-# bin/ so it's found the same way either way.
-if curl -fL https://github.com/mikf/gallery-dl/releases/latest/download/gallery-dl.bin -o bin/gallery-dl; then
+# gallery-dl — standalone Linux binary. gallery-dl doesn't publish binaries
+# on its own GitHub releases; its README points to this sibling repo's daily
+# builds instead. Falls back to pip if that ever goes away.
+if curl -fL https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_linux -o bin/gallery-dl; then
   chmod +x bin/gallery-dl
 else
   echo "Standalone gallery-dl download failed - installing via pip instead."
@@ -56,7 +56,7 @@ venv/bin/pip install -q -r requirements.txt
 cat <<EOF
 
 Done. Start it with:
-  APP_HOME=$ROOT/data venv/bin/uvicorn server:app --host 127.0.0.1 --port 8686
+  APP_HOME=$ROOT/data APP_BIN_DIR=$ROOT venv/bin/uvicorn server:app --host 127.0.0.1 --port 8686
 
 Then open http://127.0.0.1:8686 (or the host's LAN IP if you set --host 0.0.0.0).
 

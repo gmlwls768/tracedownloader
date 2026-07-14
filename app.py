@@ -28,15 +28,22 @@ def app_dir():
 
 
 BASE = app_dir()
-os.environ.setdefault("APP_HOME", os.path.join(BASE, "data"))
-os.environ.setdefault("APP_DEFAULT_OUTPUT", os.path.join(BASE, "download"))
+DATA_DIR = os.path.join(BASE, "data")
+OUTPUT_DIR = os.path.join(BASE, "download")
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.environ.setdefault("APP_HOME", DATA_DIR)
+os.environ.setdefault("APP_BIN_DIR", BASE)
+os.environ.setdefault("APP_DEFAULT_OUTPUT", OUTPUT_DIR)
 os.environ.setdefault("APP_HOST", "127.0.0.1")
 os.environ.setdefault("APP_PORT", "8686")
 
 BIN_DIR = os.path.join(BASE, "bin")
 EXE_DOWNLOADS = {
     "yt-dlp.exe": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
-    "gallery-dl.exe": "https://github.com/mikf/gallery-dl/releases/latest/download/gallery-dl.exe",
+    # gallery-dl doesn't publish binaries on its own GitHub releases - the
+    # project's README points to this sibling repo's daily builds instead.
+    "gallery-dl.exe": "https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_windows.exe",
 }
 # A long-standing, widely used source of static Windows ffmpeg builds
 # (referenced by yt-dlp's own documentation). Swap this out, or drop
