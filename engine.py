@@ -877,39 +877,30 @@ class Engine:
 
     def _run_ephemeral_auto(self, entry, url):
         """Decide video vs. gallery per URL instead of a site whitelist: ask
-        yt-dlp first, and only defer to gallery-dl when yt-dlp can't match a
-        real (non-generic) extractor for it."""
+        yt-dlp first, and only trust it outright when its probe actually
+        succeeds (real, downloadable video info). Any failure - including a
+        real extractor matching but finding no video - falls through to
+        gallery-dl, since several sites (Twitter/X, Reddit, Pixiv...) have
+        both video and image-only posts and the two tools split coverage of
+        them. Only if gallery-dl also has nothing is it truly unsupported."""
         cookies_tmp = self._cookies_tempcopy()
         probe_cmd = [YTDLP_BIN, "-J", "--flat-playlist", "--no-warnings"]
         if cookies_tmp:
             probe_cmd += ["--cookies", cookies_tmp]
         probe_cmd.append(url)
-        extractor, probe_err = "", ""
+        probe_ok, probe_err = False, ""
         try:
             proc = subprocess.run(probe_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   text=True, timeout=60)
-            if proc.returncode == 0:
-                try:
-                    extractor = (json.loads(proc.stdout).get("extractor_key") or "").lower()
-                except Exception:
-                    extractor = ""
-            else:
+            probe_ok = proc.returncode == 0
+            if not probe_ok:
                 probe_err = (proc.stderr or "").strip()
-                # yt-dlp tags nearly every log line with the matched
-                # extractor, e.g. "ERROR: [youtube] id: Video unavailable".
-                # That means yt-dlp *does* support this site and the failure
-                # is about the content (private/deleted/region-locked), not
-                # about the URL itself - very different from "no extractor
-                # matched at all", so it shouldn't fall through to gallery-dl.
-                m = re.search(r'\[([\w:.-]+)\]', probe_err)
-                if m and m.group(1).lower() != "generic":
-                    extractor = m.group(1).lower()
         except Exception as e:
             probe_err = str(e)
         finally:
             self._cleanup_cookies_tmp(cookies_tmp)
 
-        if extractor and extractor != "generic":
+        if probe_ok:
             self._run_ephemeral_video(entry, url)
             return
 
@@ -923,12 +914,10 @@ class Engine:
             self._run_gallery_download(entry, url, meta)
             return
 
-        if extractor == "generic":
-            # yt-dlp's generic scraper found *something* - good enough when
-            # gallery-dl has nothing to offer for this URL.
-            self._run_ephemeral_video(entry, url)
-            return
-
+        # Neither tool could do anything with it. Surface yt-dlp's own
+        # reason (still shown via {reason}) even though a real extractor
+        # match failing for a concrete reason isn't quite "unsupported" -
+        # gallery-dl having nothing either means there's nothing more to try.
         tail = probe_err.strip().splitlines()[-1][:150] if probe_err.strip() else ""
         self._ephemeral_update(entry, state="error", message=M("url_unsupported", reason=tail))
 
@@ -2255,9 +2244,12 @@ class Engine:
 
     def delete_tasks(self, ids, with_files=False):
         """Delete tasks. If with_files, scans for files first and returns
-        (token, files) for a 2-step confirmation."""
+        (token, files) for a 2-step confirmation. Ids that don't match a
+        tracked (DB) task are treated as session-only entries instead - see
+        _remove_ephemeral()."""
+        ids = set(ids)
         with self.lock:
-            tasks = [t for t in self.tasks if t.id in set(ids)]
+            tasks = [t for t in self.tasks if t.id in ids]
         vid_ids = []
         if with_files:
             for t in tasks:
@@ -2273,9 +2265,27 @@ class Engine:
             vid_ids = list(dict.fromkeys(vid_ids))
         for t in tasks:
             self._delete_task_only(t)
+
+        remaining = ids - {t.id for t in tasks}
+        if remaining:
+            self._remove_ephemeral(remaining)
+
         if with_files and vid_ids:
             return self.scan_files_for_delete(vid_ids)
         return None, []
+
+    def _remove_ephemeral(self, ids):
+        """Remove session-only entries (This session tab) by id - these
+        never lived in self.tasks/the database, so delete_tasks() couldn't
+        reach them without this."""
+        with self._ephemeral_lock:
+            before = len(self._ephemeral)
+            kept = deque((e for e in self._ephemeral if e["id"] not in ids), maxlen=200)
+            self._ephemeral = kept
+            removed = before - len(self._ephemeral)
+        if removed:
+            self._request_refresh()
+        return removed
 
     # ══════════════════════════════════════════
     #  BULK OPS (done tab)
