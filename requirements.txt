@@ -1,2 +1,4 @@
+# For the Linux web deployment (server.py) only - the Windows desktop
+# app (app.py) is plain stdlib (tkinter) and doesn't need these.
 fastapi>=0.110
 uvicorn>=0.29

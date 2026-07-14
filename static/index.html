@@ -237,6 +237,8 @@ en: {
   s_cookies_saved: 'Saved ({at})', s_cookies_none: 'None',
   s_cookies_placeholder: "Paste the contents of a cookies.txt (Netscape format) — leave blank to keep the current one.\nSent to both yt-dlp and gallery-dl. Export one with a browser extension such as \"Get cookies.txt LOCALLY\".",
   s_cookies_clear: 'Delete saved cookies',
+  s_auto_update: 'Keep yt-dlp/gallery-dl updated automatically',
+  s_check_updates_now: 'Check now',
   settings_cancel: 'Cancel', settings_save: 'Save', settings_saved_toast: '⚙ Settings saved',
   state_queued: 'Queued', state_downloading: 'Downloading', state_completed: 'Completed',
   state_paused: 'Paused', state_error: 'Error', state_skipped: 'Skipped',
@@ -313,6 +315,9 @@ en: {
   video_completed: '✓ Done',
   video_done: '✓ Done',
   video_done_multi: '✓ Done ({count} files)',
+  tools_updated: '⬆ Updated: {names}',
+  tools_update_failed: '⚠ Update failed: {names}',
+  tools_already_latest: '✓ yt-dlp/gallery-dl are already up to date',
 },
 ko: {
   url_placeholder: 'URL 입력 — 여러 개를 줄바꿈/공백으로 한 번에 붙여넣기 가능',
@@ -399,6 +404,8 @@ ko: {
   s_cookies_saved: '저장됨 ({at})', s_cookies_none: '없음',
   s_cookies_placeholder: 'cookies.txt 내용 붙여넣기 (Netscape 형식) — 비워두면 기존 유지.\nyt-dlp·gallery-dl 양쪽에 모두 전달됩니다. "Get cookies.txt LOCALLY" 같은 브라우저 확장으로 내보낼 수 있습니다.',
   s_cookies_clear: '저장된 쿠키 삭제',
+  s_auto_update: 'yt-dlp/gallery-dl 자동 업데이트',
+  s_check_updates_now: '지금 확인',
   settings_cancel: '취소', settings_save: '저장', settings_saved_toast: '⚙ 설정 저장됨',
   state_queued: '대기', state_downloading: '다운로드 중', state_completed: '완료',
   state_paused: '일시정지', state_error: '오류', state_skipped: '건너뜀',
@@ -474,6 +481,9 @@ ko: {
   video_completed: '✓ 완료',
   video_done: '✓ 완료',
   video_done_multi: '✓ 완료 ({count}개)',
+  tools_updated: '⬆ 업데이트됨: {names}',
+  tools_update_failed: '⚠ 업데이트 실패: {names}',
+  tools_already_latest: '✓ yt-dlp/gallery-dl 이미 최신 버전입니다',
 },
 };
 
@@ -987,6 +997,8 @@ async function openSettings() {
     <div class="frow"><label><input type="checkbox" id="s-saveonadd" ${s.save_on_add ? 'checked' : ''}> ${esc(t('s_saveonadd'))}</label></div>
     <div class="frow"><label><input type="checkbox" id="s-small" ${s.small_group_first ? 'checked' : ''}> ${esc(t('s_small_first'))}</label></div>
     <div class="frow"><label><input type="checkbox" id="s-hp" ${s.high_progress_first ? 'checked' : ''}> ${esc(t('s_hp_first'))}</label></div>
+    <div class="frow"><label><input type="checkbox" id="s-autoupdate" ${s.auto_update_tools ? 'checked' : ''}> ${esc(t('s_auto_update'))}</label>
+      <button type="button" onclick="checkToolUpdatesNow()">${esc(t('s_check_updates_now'))}</button></div>
     <div class="frow"><label>${esc(t('s_font'))}</label><select id="s-font">
       <option value="10" ${s.font_scale == 10 ? 'selected' : ''}>${esc(t('font_normal'))}</option>
       <option value="13" ${s.font_scale == 13 ? 'selected' : ''}>${esc(t('font_large'))}</option>
@@ -1018,6 +1030,7 @@ async function saveSettings() {
     save_on_add:         $('s-saveonadd').checked,
     small_group_first:   $('s-small').checked,
     high_progress_first: $('s-hp').checked,
+    auto_update_tools:   $('s-autoupdate').checked,
     font_scale:          +$('s-font').value,
     gallery_folder_template: $('s-gallery-tpl').value,
     persist_patterns:    $('s-persist').value,
@@ -1036,6 +1049,9 @@ async function saveSettings() {
 }
 function applyFont(scale) {
   document.documentElement.style.setProperty('--fs', (4 + (+scale || 10)) + 'px');
+}
+async function checkToolUpdatesNow() {
+  await api('/api/check_updates');
 }
 
 // ───────── init ─────────

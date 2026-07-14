@@ -25,6 +25,7 @@ import sqlite3
 import shutil
 import secrets
 import tempfile
+import urllib.request
 from collections import deque
 from datetime import datetime, timezone
 
@@ -55,6 +56,27 @@ def _find_bin(name):
 YTDLP_BIN           = _find_bin("yt-dlp")
 GALLERYDL_BIN       = _find_bin("gallery-dl")
 FFPROBE_BIN         = _find_bin("ffprobe")
+
+# yt-dlp and gallery-dl both change often enough (site breakage, new
+# extractors) that a copy downloaded once and never touched again goes
+# stale quickly. ffmpeg/ffprobe don't need this - they're excluded on
+# purpose, see check_tool_updates() below.
+TOOL_UPDATE_URLS = {
+    "yt-dlp": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+              + ("yt-dlp.exe" if os.name == "nt" else "yt-dlp_linux"),
+    "gallery-dl": "https://github.com/gdl-org/builds/releases/latest/download/"
+                  + ("gallery-dl_windows.exe" if os.name == "nt" else "gallery-dl_linux"),
+}
+TOOL_UPDATE_INTERVAL = 24 * 3600
+
+
+def _managed_bin_path(name):
+    """Where our own downloaded copy of `name` would live, regardless of
+    whether it's actually there yet. Only ever used to decide what
+    check_tool_updates() is allowed to overwrite - a binary found via PATH
+    instead (apt, a manual install, ...) is left alone."""
+    fname = name + ".exe" if os.name == "nt" else name
+    return os.path.join(BIN_SEARCH_DIR, "bin", fname)
 DEFAULT_OUTPUT_DIR  = os.environ.get("APP_DEFAULT_OUTPUT", "download")
 OUTPUT_TEMPLATE_TPL = '{dir}/%(uploader)s/%(upload_date>%Y-%m-%d)s - %(title)s [%(id)s].%(ext)s'
 DB_FILE             = os.path.join(BASE_DIR, "app.db")
@@ -527,6 +549,7 @@ class Engine:
                                                            DEFAULT_GALLERY_TEMPLATE)
         self._cfg_persist_patterns    = self._parse_patterns(
             self.db.get_meta("persist_patterns", ""))
+        self._cfg_auto_update_tools   = self.db.get_bool("auto_update_tools", True)
         self._autosave_interval  = (self._cfg_autosave_min * 60
                                     if self._cfg_autosave_min > 0 else AUTOSAVE_INTERVAL)
 
@@ -576,6 +599,7 @@ class Engine:
         threading.Thread(target=self._autosave_loop,    daemon=True).start()
         threading.Thread(target=self._add_queue_worker, daemon=True).start()
         threading.Thread(target=self._filepath_backfill_worker, daemon=True).start()
+        threading.Thread(target=self._update_check_loop, daemon=True).start()
 
         if self._cfg_autostart:
             threading.Timer(0.6, self._start_all).start()
@@ -2003,6 +2027,69 @@ class Engine:
             self._show_toast(M("filepath_backfill_done", count=len(updates)))
         self.db.set_meta("filepath_backfill_done", "1")
 
+    # ══════════════════════════════════════════
+    #  TOOL AUTO-UPDATE  (yt-dlp / gallery-dl only — see TOOL_UPDATE_URLS)
+    # ══════════════════════════════════════════
+    @staticmethod
+    def _tool_version(path):
+        try:
+            return subprocess.run([path, "--version"], capture_output=True,
+                                  text=True, timeout=15).stdout.strip()
+        except Exception:
+            return None
+
+    def _update_tool_binary(self, name, url):
+        """Download the latest build of `name` over our own managed copy.
+        Returns True if the version string actually changed, False if the
+        download/replace failed, or None if we don't manage this binary
+        (not present under BIN_SEARCH_DIR/bin - e.g. installed via apt or
+        found on PATH instead, which we never touch)."""
+        target = _managed_bin_path(name)
+        if not os.path.isfile(target):
+            return None
+        old_version = self._tool_version(target)
+        tmp = target + ".update"
+        try:
+            urllib.request.urlretrieve(url, tmp)
+            if os.name != "nt":
+                os.chmod(tmp, 0o755)
+            os.replace(tmp, target)
+        except Exception as e:
+            try: os.remove(tmp)
+            except OSError: pass
+            print(f"[update] {name}: {e}")
+            return False
+        return self._tool_version(target) != old_version
+
+    def check_tool_updates(self, notify_no_change=False):
+        """Refresh yt-dlp/gallery-dl in place. Safe to call anytime - a file
+        that's currently in use (a download running from it, mainly a
+        Windows concern) just fails the replace and is retried next cycle."""
+        results = {name: self._update_tool_binary(name, url)
+                   for name, url in TOOL_UPDATE_URLS.items()}
+        updated = [n for n, r in results.items() if r is True]
+        failed  = [n for n, r in results.items() if r is False]
+        if updated:
+            self._show_toast(M("tools_updated", names=", ".join(updated)))
+        if failed:
+            self._show_toast(M("tools_update_failed", names=", ".join(failed)))
+        if notify_no_change and not updated and not failed:
+            self._show_toast(M("tools_already_latest"))
+        self.db.set_meta("last_update_check", _utcnow())
+        return results
+
+    def _update_check_loop(self):
+        if self._closing.wait(5):   # brief delay after startup, then run every interval
+            return
+        while True:
+            if self._cfg_auto_update_tools:
+                try:
+                    self.check_tool_updates()
+                except Exception as e:
+                    print(f"[update] check failed: {e}")
+            if self._closing.wait(TOOL_UPDATE_INTERVAL):
+                return
+
     def _register_filepath(self, task):
         """Update the locate cache immediately for a just-completed video."""
         if not task.filepath:
@@ -2379,6 +2466,7 @@ class Engine:
             "font_scale":           self._cfg_font_size,
             "gallery_folder_template": self._cfg_gallery_template,
             "persist_patterns":     "\n".join(self._cfg_persist_patterns),
+            "auto_update_tools":    self._cfg_auto_update_tools,
             "cookies_status":       self._cookies_status(),
         }
 
@@ -2452,6 +2540,7 @@ class Engine:
                                         or DEFAULT_GALLERY_TEMPLATE
         if "persist_patterns" in s:
             self._cfg_persist_patterns = self._parse_patterns(s.get("persist_patterns"))
+        self._cfg_auto_update_tools   = bool(s.get("auto_update_tools", self._cfg_auto_update_tools))
         self._autosave_interval  = (self._cfg_autosave_min * 60
                                     if self._cfg_autosave_min > 0 else AUTOSAVE_INTERVAL)
         self.db.set_meta("autostart",           "1" if self._cfg_autostart else "0")
@@ -2466,6 +2555,7 @@ class Engine:
         self.db.set_meta("font_scale",          str(self._cfg_font_size))
         self.db.set_meta("gallery_folder_template", self._cfg_gallery_template)
         self.db.set_meta("persist_patterns",    "\n".join(self._cfg_persist_patterns))
+        self.db.set_meta("auto_update_tools",   "1" if self._cfg_auto_update_tools else "0")
         self._save_cookies(s)
         self._request_refresh()
 

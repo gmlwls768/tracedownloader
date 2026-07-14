@@ -8,6 +8,8 @@
 downloaded_archive.txt
 cookies.txt
 client/client_config.json
+gui_config.json
+app.log
 
 # downloaded tool binaries
 /bin/

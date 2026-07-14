@@ -214,6 +214,13 @@ def set_settings(body: dict):
     return {"ok": True}
 
 
+@app.post("/api/check_updates")
+def check_updates():
+    """Manual "check now" for yt-dlp/gallery-dl (also runs on its own on a
+    timer - see engine._update_check_loop)."""
+    return engine.check_tool_updates(notify_no_change=True)
+
+
 if __name__ == "__main__":
     import uvicorn
     host = os.environ.get("APP_HOST", "127.0.0.1")
