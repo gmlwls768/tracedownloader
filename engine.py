@@ -2045,13 +2045,19 @@ class Engine:
             urllib.request.urlretrieve(url, tmp)
             if os.name != "nt":
                 os.chmod(tmp, 0o755)
+            new_version = self._tool_version(tmp)
+            if not new_version:
+                # The downloaded build doesn't even run here (wrong glibc,
+                # wrong OS/arch, corrupt download...) - keep the working
+                # copy instead of replacing it with a broken one.
+                raise RuntimeError("downloaded build did not run (--version failed)")
             os.replace(tmp, target)
         except Exception as e:
             try: os.remove(tmp)
             except OSError: pass
             print(f"[update] {name}: {e}")
             return False
-        return self._tool_version(target) != old_version
+        return new_version != old_version
 
     def check_tool_updates(self, notify_no_change=False):
         """Refresh yt-dlp/gallery-dl in place. Safe to call anytime - a file
