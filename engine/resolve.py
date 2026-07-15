@@ -29,6 +29,34 @@ class _ResolveMixin:
         ul = url.lower()
         return any(p in ul for p in self._cfg_persist_patterns)
 
+    @staticmethod
+    def _parse_site_folders(text):
+        """Each line is "pattern => subfolder" - same one-per-line style as
+        the persist patterns above, just with a destination attached."""
+        pairs = []
+        for ln in (text or "").splitlines():
+            ln = ln.strip()
+            if not ln or "=>" not in ln:
+                continue
+            pattern, folder = ln.split("=>", 1)
+            pattern, folder = pattern.strip().lower(), folder.strip().strip("/\\")
+            if pattern and folder:
+                pairs.append((pattern, folder))
+        return pairs
+
+    def _resolve_output_base(self, url):
+        """Base output directory for `url`: the configured default, unless a
+        site folder pattern matches, in which case that subfolder is used
+        instead (e.g. one site's videos going to a differently-named folder
+        than the default)."""
+        base = self._cfg_output_dir or DEFAULT_OUTPUT_DIR
+        if url and self._cfg_site_output_folders:
+            ul = url.lower()
+            for pattern, folder in self._cfg_site_output_folders:
+                if pattern in ul:
+                    return os.path.join(base, folder)
+        return base
+
     def add_urls(self, text):
         """Feed several URLs from pasted text into the add queue sequentially
         (also used by the clipboard-watcher helper)."""

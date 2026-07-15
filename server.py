@@ -1,5 +1,5 @@
 """
-yt-dlp & gallery-dl GUI — web server (FastAPI REST + SSE).
+TraceDownloader — web server (FastAPI REST + SSE).
 
 Run:  uvicorn server:app --host 127.0.0.1 --port 8686
 The engine package owns every download/queue/DB decision; this file is only the
@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     engine.shutdown()
 
 
-app = FastAPI(title="yt-dlp & gallery-dl GUI", lifespan=lifespan)
+app = FastAPI(title="TraceDownloader", lifespan=lifespan)
 
 
 @app.get("/")

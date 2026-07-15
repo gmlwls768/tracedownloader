@@ -1,5 +1,5 @@
 """
-Download engine for the yt-dlp & gallery-dl GUI - package entry point.
+Download engine for TraceDownloader - package entry point.
 
 This package has no UI code in it - server.py exposes it over HTTP/SSE,
 app.py drives it directly for the desktop build. It owns the task queue,
@@ -71,6 +71,8 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
                                                            DEFAULT_GALLERY_TEMPLATE)
         self._cfg_persist_patterns    = self._parse_patterns(
             self.db.get_meta("persist_patterns", ""))
+        self._cfg_site_output_folders = self._parse_site_folders(
+            self.db.get_meta("site_output_folders", ""))
         self._cfg_auto_update_tools   = self.db.get_bool("auto_update_tools", True)
         self._autosave_interval  = (self._cfg_autosave_min * 60
                                     if self._cfg_autosave_min > 0 else AUTOSAVE_INTERVAL)
@@ -212,17 +214,17 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
             if ok:
                 self._show_toast(M("autosave_done"))
 
-    def _output_template(self):
-        d = self._cfg_output_dir or DEFAULT_OUTPUT_DIR
+    def _output_template(self, url=""):
+        d = self._resolve_output_base(url)
         return OUTPUT_TEMPLATE_TPL.replace("{dir}", d)
 
-    def _ephemeral_video_template(self):
-        d = self._cfg_output_dir or DEFAULT_OUTPUT_DIR
+    def _ephemeral_video_template(self, url=""):
+        d = self._resolve_output_base(url)
         return os.path.join(d, "%(extractor_key)s", "%(uploader)s",
                              "%(upload_date>%Y-%m-%d)s - %(title)s [%(id)s].%(ext)s")
 
-    def _gallery_output_dir(self):
-        return os.path.join(self._cfg_output_dir or DEFAULT_OUTPUT_DIR, "gallery")
+    def _gallery_output_dir(self, url=""):
+        return os.path.join(self._resolve_output_base(url), "gallery")
 
     def _format_gallery_name(self, artist, title, gid):
         tpl = self._cfg_gallery_template or DEFAULT_GALLERY_TEMPLATE

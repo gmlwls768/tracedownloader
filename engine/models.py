@@ -1,5 +1,5 @@
 """
-Download engine for the yt-dlp & gallery-dl GUI.
+Download engine for TraceDownloader.
 
 This module has no UI code in it - server.py exposes it over HTTP/SSE, and
 a future frontend could reuse it as-is. It owns the task queue, the SQLite

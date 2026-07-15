@@ -229,7 +229,7 @@ class _QueueMixin:
         cmd = [YTDLP_BIN, "-c", "--force-overwrites",
                "-f", "bestvideo+bestaudio/best",
                "--download-archive", ARCHIVE_FILE,
-               "-o", self._output_template(),
+               "-o", self._output_template(task.url),
                "--no-warnings"]
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]

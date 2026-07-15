@@ -99,7 +99,7 @@ class _EphemeralMixin:
         artist_str, title, gid = _gallery_meta_fields(meta)
         folder_name = self._format_gallery_name(artist_str, title, gid)
         count = meta.get("count")
-        out_dir = self._gallery_output_dir()
+        out_dir = self._gallery_output_dir(url)
 
         # Self dedup — some network filesystems don't reliably honor
         # gallery-dl's own built-in skip, so treat an existing non-empty
@@ -147,7 +147,7 @@ class _EphemeralMixin:
         cookies_tmp = self._cookies_tempcopy()
         cmd = [YTDLP_BIN, "-c", "--force-overwrites",
                "-f", "bestvideo+bestaudio/best",
-               "-o", self._ephemeral_video_template(), "--no-warnings"]
+               "-o", self._ephemeral_video_template(url), "--no-warnings"]
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]
         cmd.append(url)

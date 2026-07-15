@@ -26,11 +26,11 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ytdlp-gallery-dl-gui-windows
-          path: dist/ytdlp-gallery-dl-gui.exe
+          name: tracedownloader-windows
+          path: dist/tracedownloader.exe
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ytdlp-gallery-dl-gui.exe
+          files: dist/tracedownloader.exe

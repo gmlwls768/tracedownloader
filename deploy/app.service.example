@@ -1,18 +1,18 @@
 [Unit]
-Description=yt-dlp & gallery-dl GUI
+Description=TraceDownloader
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-# Copy this file to /etc/systemd/system/ytdlp-gallery-dl-gui.service and
+# Copy this file to /etc/systemd/system/tracedownloader.service and
 # replace the paths below with wherever you installed the app, then:
-#   systemctl daemon-reload && systemctl enable --now ytdlp-gallery-dl-gui
-WorkingDirectory=/opt/ytdlp-gallery-dl-gui
-Environment=APP_HOME=/opt/ytdlp-gallery-dl-gui/data
-Environment=APP_BIN_DIR=/opt/ytdlp-gallery-dl-gui
-Environment=APP_DEFAULT_OUTPUT=/opt/ytdlp-gallery-dl-gui/download
-ExecStart=/opt/ytdlp-gallery-dl-gui/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8686 --timeout-graceful-shutdown 5
+#   systemctl daemon-reload && systemctl enable --now tracedownloader
+WorkingDirectory=/opt/tracedownloader
+Environment=APP_HOME=/opt/tracedownloader/data
+Environment=APP_BIN_DIR=/opt/tracedownloader
+Environment=APP_DEFAULT_OUTPUT=/opt/tracedownloader/download
+ExecStart=/opt/tracedownloader/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8686 --timeout-graceful-shutdown 5
 Restart=on-failure
 RestartSec=3
 # Keeps an open SSE connection (/api/events) from blocking a restart.

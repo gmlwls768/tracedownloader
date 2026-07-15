@@ -196,7 +196,7 @@ class App:
         self.toast_job = None
         self.drag_item = None
 
-        root.title("yt-dlp & gallery-dl GUI")
+        root.title("TraceDownloader")
         root.geometry(cfg.get("geometry", "1180x760"))
         root.protocol("WM_DELETE_WINDOW", self.on_quit)
 
@@ -958,6 +958,17 @@ class App:
                  justify="left").grid(row=row[0], column=0, columnspan=2, sticky="w")
         row[0] += 1
 
+        ttk.Label(frm, text=t("s_sitefolders_label")).grid(row=row[0], column=0, columnspan=2,
+                                                            sticky="w", pady=(12, 0))
+        row[0] += 1
+        sitefolders_box = tk.Text(frm, width=52, height=3)
+        sitefolders_box.insert("1.0", s["site_output_folders"])
+        sitefolders_box.grid(row=row[0], column=0, columnspan=2, sticky="we", pady=2)
+        row[0] += 1
+        ttk.Label(frm, text=t("s_sitefolders_hint"), foreground="#888", wraplength=440,
+                 justify="left").grid(row=row[0], column=0, columnspan=2, sticky="w")
+        row[0] += 1
+
         cookies_status = s.get("cookies_status") or {}
         cookies_label = (t("s_cookies_saved", at=cookies_status.get("at"))
                          if cookies_status.get("saved") else t("s_cookies_none"))
@@ -991,6 +1002,7 @@ class App:
                 "font_scale": font_scale,
                 "gallery_folder_template": gallery_var.get(),
                 "persist_patterns": persist_box.get("1.0", "end").strip(),
+                "site_output_folders": sitefolders_box.get("1.0", "end").strip(),
                 "cookies": cookies_box.get("1.0", "end").strip(),
                 "cookies_clear": cookies_clear_var.get(),
             })
@@ -1028,7 +1040,7 @@ def _build_main_app(root):
 
 def main():
     root = tk.Tk()
-    root.title("yt-dlp & gallery-dl GUI")
+    root.title("TraceDownloader")
     root.geometry("440x120")
     status_var = tk.StringVar(value="Starting…")
     ttk.Label(root, textvariable=status_var, padding=24).pack(expand=True)

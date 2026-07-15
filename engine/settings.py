@@ -24,6 +24,7 @@ class _SettingsMixin:
             "font_scale":           self._cfg_font_size,
             "gallery_folder_template": self._cfg_gallery_template,
             "persist_patterns":     "\n".join(self._cfg_persist_patterns),
+            "site_output_folders":  "\n".join(f"{p} => {f}" for p, f in self._cfg_site_output_folders),
             "auto_update_tools":    self._cfg_auto_update_tools,
             "cookies_status":       self._cookies_status(),
             "tools":                self._tool_info(),
@@ -116,6 +117,8 @@ class _SettingsMixin:
                                         or DEFAULT_GALLERY_TEMPLATE
         if "persist_patterns" in s:
             self._cfg_persist_patterns = self._parse_patterns(s.get("persist_patterns"))
+        if "site_output_folders" in s:
+            self._cfg_site_output_folders = self._parse_site_folders(s.get("site_output_folders"))
         self._cfg_auto_update_tools   = bool(s.get("auto_update_tools", self._cfg_auto_update_tools))
         self._autosave_interval  = (self._cfg_autosave_min * 60
                                     if self._cfg_autosave_min > 0 else AUTOSAVE_INTERVAL)
@@ -131,6 +134,8 @@ class _SettingsMixin:
         self.db.set_meta("font_scale",          str(self._cfg_font_size))
         self.db.set_meta("gallery_folder_template", self._cfg_gallery_template)
         self.db.set_meta("persist_patterns",    "\n".join(self._cfg_persist_patterns))
+        self.db.set_meta("site_output_folders",
+                         "\n".join(f"{p} => {f}" for p, f in self._cfg_site_output_folders))
         self.db.set_meta("auto_update_tools",   "1" if self._cfg_auto_update_tools else "0")
         self._save_cookies(s)
         self._request_refresh()

@@ -5,7 +5,7 @@ PyInstaller doesn't cross-compile.
     pip install -r requirements-dev.txt
     python deploy/build_windows.py
 
-Output: dist/ytdlp-gallery-dl-gui.exe
+Output: dist/tracedownloader.exe
 
 app.py + engine/ + i18n.py are plain-stdlib (tkinter, sqlite3, subprocess...)
 - no FastAPI/uvicorn/static assets needed for this build, unlike the Linux
@@ -18,7 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 PyInstaller.__main__.run([
     os.path.join(ROOT, "app.py"),
-    "--name=ytdlp-gallery-dl-gui",
+    "--name=tracedownloader",
     "--onefile",
     "--windowed",
     "--distpath=" + os.path.join(ROOT, "dist"),
