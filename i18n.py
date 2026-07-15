@@ -1,7 +1,7 @@
 """
 English/Korean text for the desktop (tkinter) app - same keys and templates
 as static/index.html's MSG table, since server.py's status codes (see
-engine.py's M()) are shared by both front ends. Keep the two in sync by
+engine/models.py's M()) are shared by both front ends. Keep the two in sync by
 hand; there's no build step tying them together.
 
 A few entries were written with simple HTML markup (<br>, <b>, <pre>) for
@@ -83,7 +83,7 @@ MSG = {
   "s_small_first": 'Download smaller groups first',
   "s_hp_first": 'Download groups closest to finished first',
   "s_font": 'Font size',
-  "font_normal": 'Normal', "font_large": 'Large', "font_xl": 'Extra large', "font_xxl": 'Huge',
+  "font_xs": 'Very small', "font_small": 'Small', "font_normal": 'Normal', "font_large": 'Large', "font_xl": 'Extra large',
   "s_persist_label": 'Track permanently (database) — one pattern per line',
   "s_persist_hint": 'A URL is only tracked forever (resumable, deduplicated, re-checkable) if it contains one of these — everything else downloads once and shows under "This session" only. Example: youtube.com — or use * on its own to track everything.',
   "s_gallery_template_label": 'Gallery folder name format',
@@ -94,6 +94,8 @@ MSG = {
   "s_cookies_clear": 'Delete saved cookies',
   "s_auto_update": 'Keep yt-dlp/gallery-dl updated automatically',
   "s_check_updates_now": 'Check now',
+  "s_tool_versions": 'Tool versions',
+  "s_tool_updated_at": 'updated {date}',
   "settings_cancel": 'Cancel', "settings_save": 'Save', "settings_saved_toast": '⚙ Settings saved',
   "state_queued": 'Queued', "state_downloading": 'Downloading', "state_completed": 'Completed',
   "state_paused": 'Paused', "state_error": 'Error', "state_skipped": 'Skipped',
@@ -171,7 +173,7 @@ MSG = {
   "video_done_multi": '✓ Done ({count} files)',
   "tools_updated": '⬆ Updated: {names}',
   "tools_update_failed": '⚠ Update failed: {names}',
-  "tools_already_latest": '✓ yt-dlp/gallery-dl are already up to date',
+  "tools_already_latest": '✓ Already up to date: {names}',
 },
 "ko": {
   "url_placeholder": 'URL 입력 — 여러 개를 줄바꿈/공백으로 한 번에 붙여넣기 가능',
@@ -244,7 +246,7 @@ MSG = {
   "s_small_first": '작은 그룹 우선 다운로드',
   "s_hp_first": '진행률 높은 그룹 우선',
   "s_font": '글자 크기',
-  "font_normal": '보통', "font_large": '크게', "font_xl": '아주 크게', "font_xxl": '매우 크게',
+  "font_xs": '아주 작게', "font_small": '작게', "font_normal": '보통', "font_large": '크게', "font_xl": '아주 크게',
   "s_persist_label": '영구 추적할 사이트 패턴 (DB 저장) — 한 줄에 하나씩',
   "s_persist_hint": 'URL에 이 중 하나라도 포함되면 영구 추적(이어받기/중복방지/재확인)됩니다. 그 외에는 한 번만 받고 "이번 세션"에만 표시됩니다. 예: youtube.com — 전체를 영구 추적하려면 * 한 줄만 입력.',
   "s_gallery_template_label": '갤러리 폴더명 형식',
@@ -255,6 +257,8 @@ MSG = {
   "s_cookies_clear": '저장된 쿠키 삭제',
   "s_auto_update": 'yt-dlp/gallery-dl 자동 업데이트',
   "s_check_updates_now": '지금 확인',
+  "s_tool_versions": '툴 버전',
+  "s_tool_updated_at": '{date} 적용',
   "settings_cancel": '취소', "settings_save": '저장', "settings_saved_toast": '⚙ 설정 저장됨',
   "state_queued": '대기', "state_downloading": '다운로드 중', "state_completed": '완료',
   "state_paused": '일시정지', "state_error": '오류', "state_skipped": '건너뜀',
@@ -332,7 +336,7 @@ MSG = {
   "video_done_multi": '✓ 완료 ({count}개)',
   "tools_updated": '⬆ 업데이트됨: {names}',
   "tools_update_failed": '⚠ 업데이트 실패: {names}',
-  "tools_already_latest": '✓ yt-dlp/gallery-dl 이미 최신 버전입니다',
+  "tools_already_latest": '✓ 이미 최신 버전: {names}',
 },
 }
 

@@ -2,7 +2,7 @@
 yt-dlp & gallery-dl GUI — web server (FastAPI REST + SSE).
 
 Run:  uvicorn server:app --host 127.0.0.1 --port 8686
-engine.py owns every download/queue/DB decision; this file is only the
+The engine package owns every download/queue/DB decision; this file is only the
 HTTP layer on top of it.
 """
 
@@ -218,7 +218,7 @@ def set_settings(body: dict):
 def check_updates():
     """Manual "check now" for yt-dlp/gallery-dl (also runs on its own on a
     timer - see engine._update_check_loop)."""
-    return engine.check_tool_updates(notify_no_change=True)
+    return engine.check_tool_updates()
 
 
 if __name__ == "__main__":

@@ -75,7 +75,7 @@ APP_HOME=./data venv/bin/uvicorn server:app --host 127.0.0.1 --port 8686
 ```
 
 yt-dlp and gallery-dl need to be reachable — either drop them in a `bin/`
-folder next to `engine.py`, or have them on your `PATH`.
+folder next to `engine/`, or have them on your `PATH`.
 
 ## Configuration
 
@@ -126,7 +126,7 @@ python app.py
 venv/bin/uvicorn server:app --reload --host 127.0.0.1 --port 8686
 ```
 
-`engine.py` has no UI dependency either way and can be exercised directly
+`engine/` has no UI dependency either way and can be exercised directly
 if you want to script against it.
 
 ## License

@@ -70,6 +70,11 @@ TOOL_UPDATE_URLS = {
 TOOL_UPDATE_INTERVAL = 24 * 3600
 # Package names on PyPI, for the pip fallback in _update_tool_via_pip().
 TOOL_PIP_NAMES = {"yt-dlp": "yt-dlp", "gallery-dl": "gallery-dl"}
+# Shown in Settings next to each tool's version/update date.
+TOOL_REPO_URLS = {
+    "yt-dlp": "https://github.com/yt-dlp/yt-dlp",
+    "gallery-dl": "https://github.com/mikf/gallery-dl",
+}
 
 
 def _managed_bin_path(name):
@@ -557,6 +562,7 @@ __all__ = [
     "PROGRESS_LINE_RE",
     "RES_FILE_ID_RE",
     "TOOL_PIP_NAMES",
+    "TOOL_REPO_URLS",
     "TOOL_UPDATE_INTERVAL",
     "TOOL_UPDATE_URLS",
     "Task",

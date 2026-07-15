@@ -21,37 +21,68 @@ $SUDO apt-get install -y --no-install-recommends python3-venv ffmpeg curl ca-cer
 
 mkdir -p bin data
 
-# yt-dlp — standalone Linux binary, no Python dependency on the host.
-curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o bin/yt-dlp
-chmod +x bin/yt-dlp
+# The standalone yt-dlp/gallery-dl builds are PyInstaller binaries built for
+# specific CPU architectures - on anything other than x86_64 (an ARM SBC, an
+# Apple Silicon VM, ...) they either don't exist or won't run (wrong
+# architecture, or a newer glibc than an older distro ships). Rather than
+# fail outright, each one is verified with --version before being trusted,
+# falling back to pip install into ./venv otherwise - the same fallback the
+# app's own auto-updater uses at runtime (see engine/updater.py).
+ARCH="$(uname -m)"
+
+python3 -m venv venv
+venv/bin/pip install -q -r requirements.txt
+
+pip_install_tool() {  # pip_install_tool <bin name> <pip package>
+  echo "Installing $1 via pip instead."
+  rm -f "bin/$1"
+  venv/bin/pip install -q "$2"
+  ln -sf "$ROOT/venv/bin/$1" "bin/$1"
+}
+
+# yt-dlp
+case "$ARCH" in
+  x86_64|amd64)  YTDLP_ASSET=yt-dlp_linux ;;
+  aarch64|arm64) YTDLP_ASSET=yt-dlp_linux_aarch64 ;;
+  *)             YTDLP_ASSET="" ;;
+esac
+if [ -n "$YTDLP_ASSET" ] \
+   && curl -fL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/$YTDLP_ASSET" -o bin/yt-dlp \
+   && chmod +x bin/yt-dlp && bin/yt-dlp --version >/dev/null 2>&1; then
+  :
+else
+  pip_install_tool yt-dlp "yt-dlp[default]"
+fi
 bin/yt-dlp --version
 
-# gallery-dl — standalone Linux binary. gallery-dl doesn't publish binaries
-# on its own GitHub releases; its README points to this sibling repo's daily
-# builds instead. Falls back to pip if that ever goes away.
-if curl -fL https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_linux -o bin/gallery-dl; then
-  chmod +x bin/gallery-dl
+# gallery-dl — standalone Linux binary, x86_64 only (gallery-dl doesn't
+# publish binaries on its own GitHub releases; its README points to this
+# sibling repo's daily builds instead, and that repo only builds x86_64).
+if [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ]; then
+  curl -fL https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_linux -o bin/gallery-dl \
+    && chmod +x bin/gallery-dl && bin/gallery-dl --version >/dev/null 2>&1
 else
-  echo "Standalone gallery-dl download failed - installing via pip instead."
-  rm -f bin/gallery-dl
-  python3 -m venv venv
-  venv/bin/pip install -q gallery-dl
-  ln -sf "$ROOT/venv/bin/gallery-dl" bin/gallery-dl
-fi
+  false
+fi || pip_install_tool gallery-dl gallery-dl
 bin/gallery-dl --version
 
 # deno — JS runtime yt-dlp uses to decode YouTube's signature scheme.
 # Without it, YouTube videos (including embeds) fail with "Requested
 # format is not available" on most current Linux distros.
-curl -sL -o /tmp/deno.zip \
-     https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip
-python3 -c "import zipfile; zipfile.ZipFile('/tmp/deno.zip').extractall('bin')"
-chmod +x bin/deno
-rm /tmp/deno.zip
-bin/deno --version | head -1
-
-python3 -m venv venv
-venv/bin/pip install -q -r requirements.txt
+case "$ARCH" in
+  x86_64|amd64)  DENO_ASSET=deno-x86_64-unknown-linux-gnu.zip ;;
+  aarch64|arm64) DENO_ASSET=deno-aarch64-unknown-linux-gnu.zip ;;
+  *)             DENO_ASSET="" ;;
+esac
+if [ -n "$DENO_ASSET" ] \
+   && curl -sL -o /tmp/deno.zip "https://github.com/denoland/deno/releases/latest/download/$DENO_ASSET"; then
+  python3 -c "import zipfile; zipfile.ZipFile('/tmp/deno.zip').extractall('bin')"
+  chmod +x bin/deno
+  rm /tmp/deno.zip
+  bin/deno --version | head -1
+else
+  echo "No deno build for architecture '$ARCH' - skipping (some YouTube downloads may fail without it)."
+fi
 
 cat <<EOF
 

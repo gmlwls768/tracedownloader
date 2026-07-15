@@ -20,10 +20,9 @@ class _UpdaterMixin:
 
     def _update_tool_binary(self, name, url):
         """Download the latest build of `name` over our own managed copy.
-        Returns True if the version string actually changed, False if the
-        download/replace failed, or None if we don't manage this binary
-        (not present under BIN_SEARCH_DIR/bin - e.g. installed via apt or
-        found on PATH instead, which we never touch)."""
+        Returns "updated"/"latest"/"failed", or None if we don't manage
+        this binary (not present under BIN_SEARCH_DIR/bin - e.g. installed
+        via apt or found on PATH instead, which we never touch)."""
         target = _managed_bin_path(name)
         if not os.path.isfile(target):
             return None
@@ -45,7 +44,7 @@ class _UpdaterMixin:
             except OSError: pass
             print(f"[update] {name} standalone build failed: {e}")
             return self._update_tool_via_pip(name, target, old_version)
-        return new_version != old_version
+        return self._mark_if_changed(name, old_version, new_version)
 
     def _update_tool_via_pip(self, name, target, old_version):
         """Fallback for when the standalone build won't run on this system
@@ -56,29 +55,39 @@ class _UpdaterMixin:
         pip = _pip_fallback_path()
         pkg = TOOL_PIP_NAMES.get(name)
         if not pip or not pkg or not os.path.islink(target):
-            return False
+            return "failed"
         try:
             subprocess.run([pip, "install", "-q", "--upgrade", pkg],
                           check=True, timeout=180, capture_output=True, text=True)
         except Exception as e:
             print(f"[update] {name} pip fallback failed: {e}")
-            return False
-        return self._tool_version(target) != old_version
+            return "failed"
+        return self._mark_if_changed(name, old_version, self._tool_version(target))
 
-    def check_tool_updates(self, notify_no_change=False):
+    def _mark_if_changed(self, name, old_version, new_version):
+        if new_version != old_version:
+            self.db.set_meta(f"{name}_updated_at", _utcnow())
+            return "updated"
+        return "latest"
+
+    def check_tool_updates(self):
         """Refresh yt-dlp/gallery-dl in place. Safe to call anytime - a file
         that's currently in use (a download running from it, mainly a
-        Windows concern) just fails the replace and is retried next cycle."""
+        Windows concern) just fails the replace and is retried next cycle.
+        Always reports what happened (updated/already latest/failed) even
+        from the background loop, since a silent "failed" on an LXC with an
+        incompatible glibc looks identical to one that's actually broken."""
         results = {name: self._update_tool_binary(name, url)
                    for name, url in TOOL_UPDATE_URLS.items()}
-        updated = [n for n, r in results.items() if r is True]
-        failed  = [n for n, r in results.items() if r is False]
+        updated = [n for n, r in results.items() if r == "updated"]
+        latest  = [n for n, r in results.items() if r == "latest"]
+        failed  = [n for n, r in results.items() if r == "failed"]
         if updated:
             self._show_toast(M("tools_updated", names=", ".join(updated)))
         if failed:
             self._show_toast(M("tools_update_failed", names=", ".join(failed)))
-        if notify_no_change and not updated and not failed:
-            self._show_toast(M("tools_already_latest"))
+        if latest:
+            self._show_toast(M("tools_already_latest", names=", ".join(latest)))
         self.db.set_meta("last_update_check", _utcnow())
         return results
 

@@ -1,11 +1,11 @@
 """
 Desktop app for the packaged Windows build (see deploy/build_windows.py).
 
-A native tkinter GUI, not a browser window - it imports engine.py directly
-and calls it in-process. No HTTP server, no port, nothing to open in a
-browser. The Linux deployment is unrelated to this file; it runs
+A native tkinter GUI, not a browser window - it imports the engine package
+directly and calls it in-process. No HTTP server, no port, nothing to open
+in a browser. The Linux deployment is unrelated to this file; it runs
 server.py/static/index.html as a small web server instead (see
-deploy/install.sh) - both front ends share the exact same engine.py.
+deploy/install.sh) - both front ends share the exact same engine package.
 
 Handles what a double-clicked .exe needs on top of that:
 - A data folder that lives next to the .exe, not PyInstaller's throwaway
@@ -21,7 +21,9 @@ import sys
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 import urllib.request
+import webbrowser
 import zipfile
 from tkinter import filedialog, messagebox, ttk
 
@@ -70,8 +72,8 @@ EXE_DOWNLOADS = {
 # from here.
 FFMPEG_ZIP_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 
-# Small local file for GUI-only preferences that have no place in engine.py's
-# shared, cross-platform settings (the web UI keeps language in the
+# Small local file for GUI-only preferences that have no place in the
+# engine's shared, cross-platform settings (the web UI keeps language in the
 # browser's localStorage for the same reason - it's a per-client choice).
 LOCAL_CONFIG_PATH = os.path.join(BASE, "gui_config.json")
 
@@ -220,7 +222,22 @@ class App:
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure("Treeview", rowheight=24)
+        self.apply_font_scale(self.engine.get_settings().get("font_scale", 10))
+
+    def apply_font_scale(self, scale):
+        """Live, no-restart font resize: ttk widgets default to the named
+        Tk fonts below, so reconfiguring them updates every widget at once.
+        Negative size = pixels, mirroring the web UI's `4 + scale` px math
+        (static/index.html's applyFont()) so the same scale value looks
+        like the same relative size on both front ends."""
+        px = 4 + int(scale or 10)
+        for name in ("TkDefaultFont", "TkTextFont", "TkHeadingFont", "TkMenuFont",
+                     "TkFixedFont", "TkCaptionFont", "TkSmallCaptionFont", "TkIconFont", "TkTooltipFont"):
+            try:
+                tkfont.nametofont(name).configure(size=-px)
+            except tk.TclError:
+                pass
+        ttk.Style().configure("Treeview", rowheight=px + 10)
 
     def _build_topbar(self):
         top = ttk.Frame(self.root, padding=6)
@@ -899,8 +916,21 @@ class App:
                   command=lambda: self.check_tool_updates_now()).pack(side="left", padx=(10, 0))
         add("", autoupdate_frame)
 
-        font_labels = [t("font_normal"), t("font_large"), t("font_xl"), t("font_xxl")]
-        font_values = [10, 13, 16, 20]
+        tools_frame = ttk.Frame(frm)
+        for name, info in s.get("tools", {}).items():
+            row_frame = ttk.Frame(tools_frame)
+            row_frame.pack(anchor="w", pady=1)
+            version_text = f'{name} {info.get("version") or "?"}'
+            if info.get("updated_at"):
+                version_text += f' ({t("s_tool_updated_at", date=info["updated_at"][:10])})'
+            ttk.Label(row_frame, text=version_text).pack(side="left")
+            link = ttk.Label(row_frame, text=" GitHub ↗", foreground="#4a9eff", cursor="hand2")
+            link.pack(side="left")
+            link.bind("<Button-1>", lambda e, url=info.get("github"): webbrowser.open(url))
+        add(t("s_tool_versions"), tools_frame)
+
+        font_labels = [t("font_xs"), t("font_small"), t("font_normal"), t("font_large"), t("font_xl")]
+        font_values = [4, 7, 10, 13, 16]
         font_var = tk.StringVar(value=font_labels[font_values.index(s["font_scale"])]
                                 if s["font_scale"] in font_values else font_labels[0])
         add(t("s_font"), ttk.Combobox(frm, textvariable=font_var, state="readonly",
@@ -946,6 +976,7 @@ class App:
         btns.grid(row=row[0], column=0, columnspan=2, pady=(14, 0))
 
         def save():
+            font_scale = font_values[font_labels.index(font_var.get())]
             self.engine.set_settings({
                 "max_concurrent": max_var.get(),
                 "autosave_minutes": autosave_var.get(),
@@ -957,12 +988,13 @@ class App:
                 "small_group_first": small_var.get(),
                 "high_progress_first": hp_var.get(),
                 "auto_update_tools": autoupdate_var.get(),
-                "font_scale": font_values[font_labels.index(font_var.get())],
+                "font_scale": font_scale,
                 "gallery_folder_template": gallery_var.get(),
                 "persist_patterns": persist_box.get("1.0", "end").strip(),
                 "cookies": cookies_box.get("1.0", "end").strip(),
                 "cookies_clear": cookies_clear_var.get(),
             })
+            self.apply_font_scale(font_scale)
             if lang_var.get() != self.t.lang:
                 self.set_language(lang_var.get())
             self.show_toast(self.t("settings_saved_toast"))
@@ -972,9 +1004,19 @@ class App:
         ttk.Button(btns, text=t("settings_cancel"), command=win.destroy).pack(side="left", padx=6)
         ttk.Button(btns, text=t("settings_save"), command=save).pack(side="left", padx=6)
 
+        # This dialog has grown a few rows taller over time (tool versions,
+        # font size, ...); centering it on the full screen - rather than
+        # leaving it wherever Tk's default placement lands, which can be low
+        # enough to run out of room below - keeps the Save/Cancel row from
+        # ever landing off the bottom of the screen.
+        win.update_idletasks()
+        w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+        x = (win.winfo_screenwidth() - w) // 2
+        y = max(0, (win.winfo_screenheight() - h) // 2)
+        win.geometry(f"{w}x{h}+{x}+{y}")
+
     def check_tool_updates_now(self):
-        threading.Thread(target=lambda: self.engine.check_tool_updates(notify_no_change=True),
-                         daemon=True).start()
+        threading.Thread(target=self.engine.check_tool_updates, daemon=True).start()
 
 
 def _build_main_app(root):

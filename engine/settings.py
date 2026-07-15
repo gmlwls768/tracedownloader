@@ -26,7 +26,25 @@ class _SettingsMixin:
             "persist_patterns":     "\n".join(self._cfg_persist_patterns),
             "auto_update_tools":    self._cfg_auto_update_tools,
             "cookies_status":       self._cookies_status(),
+            "tools":                self._tool_info(),
         }
+
+    def _tool_info(self):
+        info = {}
+        for name, bin_path in (("yt-dlp", YTDLP_BIN), ("gallery-dl", GALLERYDL_BIN)):
+            updated_at = self.db.get_meta(f"{name}_updated_at", "")
+            if not updated_at:
+                try:
+                    updated_at = datetime.fromtimestamp(
+                        os.path.getmtime(bin_path), tz=UTC).isoformat()
+                except OSError:
+                    updated_at = None
+            info[name] = {
+                "version": self._tool_version(bin_path),
+                "updated_at": updated_at,
+                "github": TOOL_REPO_URLS[name],
+            }
+        return info
 
     @staticmethod
     def _cookies_status():

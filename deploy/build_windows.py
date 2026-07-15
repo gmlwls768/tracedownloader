@@ -7,7 +7,7 @@ PyInstaller doesn't cross-compile.
 
 Output: dist/ytdlp-gallery-dl-gui.exe
 
-app.py + engine.py + i18n.py are plain-stdlib (tkinter, sqlite3, subprocess...)
+app.py + engine/ + i18n.py are plain-stdlib (tkinter, sqlite3, subprocess...)
 - no FastAPI/uvicorn/static assets needed for this build, unlike the Linux
 web deployment (see requirements.txt / deploy/install.sh for that side).
 """

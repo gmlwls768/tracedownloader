@@ -228,7 +228,7 @@ en: {
   s_small_first: 'Download smaller groups first',
   s_hp_first: 'Download groups closest to finished first',
   s_font: 'Font size',
-  font_normal: 'Normal', font_large: 'Large', font_xl: 'Extra large', font_xxl: 'Huge',
+  font_xs: 'Very small', font_small: 'Small', font_normal: 'Normal', font_large: 'Large', font_xl: 'Extra large',
   s_persist_label: 'Track permanently (database)',
   s_persist_hint: 'One pattern per line. A URL is only tracked forever (resumable, deduplicated, re-checkable) if it contains one of these — everything else downloads once and shows under "This session" only. Example: youtube.com — or use * on its own to track everything.',
   s_gallery_template_label: 'Gallery folder name format',
@@ -239,6 +239,8 @@ en: {
   s_cookies_clear: 'Delete saved cookies',
   s_auto_update: 'Keep yt-dlp/gallery-dl updated automatically',
   s_check_updates_now: 'Check now',
+  s_tool_versions: 'Tool versions',
+  s_tool_updated_at: 'updated {date}',
   settings_cancel: 'Cancel', settings_save: 'Save', settings_saved_toast: '⚙ Settings saved',
   state_queued: 'Queued', state_downloading: 'Downloading', state_completed: 'Completed',
   state_paused: 'Paused', state_error: 'Error', state_skipped: 'Skipped',
@@ -246,7 +248,7 @@ en: {
   stats_summary: 'Videos: {done}/{total}  |  Skipped: {skip}  |  Downloading: {dling}  |  Total completed: {cum}',
   stats_speed: 'Avg speed: {speed}  |  Downloading: {dling}',
   stats_speed_idle: 'Avg speed: -  |  Downloading: 0',
-  // message codes (engine.py, via M())
+  // message codes (engine/models.py, via M())
   add_batch_progress: '📋 {count} URLs — adding one by one…',
   already_downloaded: 'Already downloaded',
   autosave_done: '💾 Autosaved',
@@ -317,7 +319,7 @@ en: {
   video_done_multi: '✓ Done ({count} files)',
   tools_updated: '⬆ Updated: {names}',
   tools_update_failed: '⚠ Update failed: {names}',
-  tools_already_latest: '✓ yt-dlp/gallery-dl are already up to date',
+  tools_already_latest: '✓ Already up to date: {names}',
 },
 ko: {
   url_placeholder: 'URL 입력 — 여러 개를 줄바꿈/공백으로 한 번에 붙여넣기 가능',
@@ -395,7 +397,7 @@ ko: {
   s_small_first: '작은 그룹 우선 다운로드',
   s_hp_first: '진행률 높은 그룹 우선',
   s_font: '글자 크기',
-  font_normal: '보통', font_large: '크게', font_xl: '아주 크게', font_xxl: '매우 크게',
+  font_xs: '아주 작게', font_small: '작게', font_normal: '보통', font_large: '크게', font_xl: '아주 크게',
   s_persist_label: '영구 추적할 사이트 패턴 (DB 저장)',
   s_persist_hint: '한 줄에 하나씩 — URL에 이 중 하나라도 포함되면 영구 추적(이어받기/중복방지/재확인)됩니다. 그 외에는 한 번만 받고 "이번 세션"에만 표시됩니다. 예: youtube.com — 전체를 영구 추적하려면 * 한 줄만 입력.',
   s_gallery_template_label: '갤러리 폴더명 형식',
@@ -406,6 +408,8 @@ ko: {
   s_cookies_clear: '저장된 쿠키 삭제',
   s_auto_update: 'yt-dlp/gallery-dl 자동 업데이트',
   s_check_updates_now: '지금 확인',
+  s_tool_versions: '툴 버전',
+  s_tool_updated_at: '{date} 적용',
   settings_cancel: '취소', settings_save: '저장', settings_saved_toast: '⚙ 설정 저장됨',
   state_queued: '대기', state_downloading: '다운로드 중', state_completed: '완료',
   state_paused: '일시정지', state_error: '오류', state_skipped: '건너뜀',
@@ -483,7 +487,7 @@ ko: {
   video_done_multi: '✓ 완료 ({count}개)',
   tools_updated: '⬆ 업데이트됨: {names}',
   tools_update_failed: '⚠ 업데이트 실패: {names}',
-  tools_already_latest: '✓ yt-dlp/gallery-dl 이미 최신 버전입니다',
+  tools_already_latest: '✓ 이미 최신 버전: {names}',
 },
 };
 
@@ -999,11 +1003,17 @@ async function openSettings() {
     <div class="frow"><label><input type="checkbox" id="s-hp" ${s.high_progress_first ? 'checked' : ''}> ${esc(t('s_hp_first'))}</label></div>
     <div class="frow"><label><input type="checkbox" id="s-autoupdate" ${s.auto_update_tools ? 'checked' : ''}> ${esc(t('s_auto_update'))}</label>
       <button type="button" onclick="checkToolUpdatesNow()">${esc(t('s_check_updates_now'))}</button></div>
+    <div class="frow" style="align-items:flex-start"><label style="padding-top:2px">${esc(t('s_tool_versions'))}</label>
+      <div style="line-height:1.7">${Object.entries(s.tools || {}).map(([name, info]) => `
+        <div>${esc(name)} <b>${esc(info.version || '?')}</b>${info.updated_at
+          ? ` <span class="hint" style="margin:0">(${esc(t('s_tool_updated_at', { date: info.updated_at.slice(0, 10) }))})</span>` : ''}
+          — <a href="${esc(info.github)}" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>`).join('')}</div></div>
     <div class="frow"><label>${esc(t('s_font'))}</label><select id="s-font">
+      <option value="4" ${s.font_scale == 4 ? 'selected' : ''}>${esc(t('font_xs'))}</option>
+      <option value="7" ${s.font_scale == 7 ? 'selected' : ''}>${esc(t('font_small'))}</option>
       <option value="10" ${s.font_scale == 10 ? 'selected' : ''}>${esc(t('font_normal'))}</option>
       <option value="13" ${s.font_scale == 13 ? 'selected' : ''}>${esc(t('font_large'))}</option>
       <option value="16" ${s.font_scale == 16 ? 'selected' : ''}>${esc(t('font_xl'))}</option>
-      <option value="20" ${s.font_scale == 20 ? 'selected' : ''}>${esc(t('font_xxl'))}</option>
     </select></div>
     <hr style="border:none;border-top:1px solid var(--border);margin:12px 0">
     <div class="frow"><label>${esc(t('s_gallery_template_label'))}</label><input type="text" id="s-gallery-tpl" class="wide" value="${esc(s.gallery_folder_template)}"></div>
