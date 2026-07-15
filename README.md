@@ -93,13 +93,21 @@ folder next to `engine.py`, or have them on your `PATH`.
 ## Project layout
 
 ```
-engine.py        task queue, SQLite-backed state, all yt-dlp/gallery-dl calls,
+engine/          task queue, SQLite-backed state, all yt-dlp/gallery-dl calls,
                  auto-update logic - the shared core, no UI code
+  __init__.py      Engine class assembly, init/load-save/shutdown
+  models.py        DB, Task, module-level constants/helpers, M()
+  ephemeral.py     session-only (non-persistent) video/gallery download
+  resolve.py       URL intake + persistent-group playlist resolve
+  workers.py       download queue/workers, start-stop-reorder actions
+  maintenance.py   done-tab tools, delete, apply_action() dispatch
+  updater.py       background yt-dlp/gallery-dl self-update
+  settings.py      settings get/set, cookies, state snapshot
 i18n.py          English/Korean text shared by both front ends
-app.py           Windows desktop app (tkinter) - imports engine.py directly,
+app.py           Windows desktop app (tkinter) - imports engine directly,
                  no server involved
 server.py        Linux web server: FastAPI REST + Server-Sent Events on
-                 top of engine.py
+                 top of engine
 static/index.html web UI served by server.py (no build step)
 client/          optional helper for the web deployment: clipboard
                  watching + "open on this PC" (only useful if the server
