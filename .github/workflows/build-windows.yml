@@ -6,6 +6,11 @@ on:
       - "v*"
   workflow_dispatch: {}
 
+# Needed to attach the built .exe to the release (the default GITHUB_TOKEN
+# is read-only on new repositories).
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
