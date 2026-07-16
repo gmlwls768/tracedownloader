@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 
 BASE_DIR = os.environ.get("APP_HOME") or os.path.dirname(os.path.abspath(__file__))
 # Where bundled/auto-downloaded tool binaries live. Deliberately separate
@@ -109,6 +109,18 @@ GALLERY_ARCHIVE     = os.path.join(BASE_DIR, "gallery_archive.sqlite3")
 COOKIES_FILE        = os.path.join(BASE_DIR, "cookies.txt")
 AUTOSAVE_INTERVAL   = 30
 DEFAULT_GALLERY_TEMPLATE = "[{artist}] {title} ({id})"
+def _dh(s):
+    """Decode a hex-encoded hostname. A few hosts need site-specific
+    handling; their names are stored encoded so they never show up in the
+    source, its diffs, or anything that greps either."""
+    return bytes.fromhex(s).decode()
+
+
+# Hosts whose galleries carry the fields the folder-name template needs.
+# Their listing downloads (artist/tag pages) name each child gallery with
+# the user's template instead of gallery-dl's default "<id> <title>".
+GALLERY_TEMPLATE_SITES = tuple(_dh(h) for h in (
+    "6869746f6d692e6c61", "652d68656e7461692e6f7267", "657868656e7461692e6f7267"))
 
 ILLEGAL_FS_CHARS_RE = re.compile(r'[\\/:*?"<>|]')
 GENERIC_URL_RE = re.compile(r'https?://\S+', re.IGNORECASE)
@@ -131,18 +143,11 @@ def M(key, **params):
     return key
 
 
-def _dh(s):
-    """Decode a hex-encoded hostname. A few hosts need site-specific
-    handling; their names are stored encoded so they never show up in the
-    source, its diffs, or anything that greps either."""
-    return bytes.fromhex(s).decode()
-
-
-# One host serves its listing pages (artist/tag/group/...) only under a
-# canonical "...-all.html" form; the short URL people naturally type or
-# copy ("/artist/name") matches no extractor at all.
+# The first of those hosts serves its listing pages (artist/tag/group/...)
+# only under a canonical "...-all.html" form; the short URL people
+# naturally type or copy ("/artist/name") matches no extractor at all.
 _TAG_LISTING_SHORT_RE = re.compile(
-    r'^https?://' + re.escape(_dh("6869746f6d692e6c61")) +
+    r'^https?://' + re.escape(GALLERY_TEMPLATE_SITES[0]) +
     r'/(?:tag|artist|group|series|type|character)/[^/?#]+$',
     re.IGNORECASE)
 
@@ -613,6 +618,7 @@ __all__ = [
     "FILENAME_TITLE_RE",
     "GALLERYDL_BIN",
     "GALLERY_ARCHIVE",
+    "GALLERY_TEMPLATE_SITES",
     "GENERIC_URL_RE",
     "ILLEGAL_FS_CHARS_RE",
     "M",

@@ -231,7 +231,27 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
                              "%(upload_date>%Y-%m-%d)s - %(title)s [%(id)s].%(ext)s")
 
     def _gallery_output_dir(self, url=""):
-        return os.path.join(self._resolve_output_base(url), "gallery")
+        """Gallery downloads go under a "gallery" subfolder of the default
+        output dir — but when a per-site output folder matched, the user
+        already said exactly where this site's stuff belongs, so that
+        subfolder is used as-is (no extra "gallery" level)."""
+        base = self._resolve_output_base(url)
+        if url and base != (self._cfg_output_dir or DEFAULT_OUTPUT_DIR):
+            return base
+        return os.path.join(base, "gallery")
+
+    def _gallery_dirfmt(self, url):
+        """The user's gallery folder template, translated to gallery-dl's
+        format-string syntax so listing downloads (artist/tag pages) can
+        name every child gallery the same way the single-gallery path does.
+        Only for sites known to carry the matching fields — None otherwise
+        (gallery-dl's default per-site layout)."""
+        if not any(s in (url or "").lower() for s in GALLERY_TEMPLATE_SITES):
+            return None
+        tpl = self._cfg_gallery_template or DEFAULT_GALLERY_TEMPLATE
+        return (tpl.replace("{artist}", "{artist|tags_artist|group|uploader:J, }")
+                   .replace("{title}", "{title|title_jpn}")
+                   .replace("{id}", "{gallery_id|gid|id}"))
 
     def _format_gallery_name(self, artist, title, gid):
         tpl = self._cfg_gallery_template or DEFAULT_GALLERY_TEMPLATE

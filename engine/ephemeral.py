@@ -142,6 +142,10 @@ class _EphemeralMixin:
         cmd = [GALLERYDL_BIN, "-o", f"base-directory={out_dir}"]
         if not listing:
             cmd += ["-o", f'directory=["{folder_name}"]']
+        else:
+            dirfmt = self._gallery_dirfmt(url)
+            if dirfmt:
+                cmd += ["-o", f'directory=["{dirfmt}"]']
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]
         cmd.append(url)

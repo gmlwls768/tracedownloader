@@ -897,8 +897,28 @@ class App:
         win.title(t("settings_title"))
         win.transient(self.root)
         win.grab_set()
-        frm = ttk.Frame(win, padding=14)
-        frm.pack(fill="both", expand=True)
+        # The dialog is taller than a landscape screen - host the content in
+        # a canvas so it scrolls (mouse wheel included) instead of the
+        # bottom rows falling off the display.
+        outer = ttk.Frame(win)
+        outer.pack(fill="both", expand=True)
+        canvas = tk.Canvas(outer, highlightthickness=0, borderwidth=0)
+        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        frm = ttk.Frame(canvas, padding=14)
+        frm_item = canvas.create_window((0, 0), window=frm, anchor="nw")
+        frm.bind("<Configure>",
+                 lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>",
+                    lambda e: canvas.itemconfigure(frm_item, width=e.width))
+
+        def _wheel(ev):
+            canvas.yview_scroll(-1 if ev.delta > 0 else 1, "units")
+        win.bind("<MouseWheel>", _wheel)          # Windows
+        win.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))  # X11
+        win.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
 
         row = [0]
         def add(label_text, widget):
@@ -1054,13 +1074,12 @@ class App:
         ttk.Button(btns, text=t("settings_cancel"), command=win.destroy).pack(side="left", padx=6)
         ttk.Button(btns, text=t("settings_save"), command=save).pack(side="left", padx=6)
 
-        # This dialog has grown a few rows taller over time (tool versions,
-        # font size, ...); centering it on the full screen - rather than
-        # leaving it wherever Tk's default placement lands, which can be low
-        # enough to run out of room below - keeps the Save/Cancel row from
-        # ever landing off the bottom of the screen.
+        # Size to the content but never taller than the screen - anything
+        # that doesn't fit scrolls (see the canvas above). Centered so the
+        # visible part sits in the middle of the display.
         win.update_idletasks()
-        w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+        w = frm.winfo_reqwidth() + vsb.winfo_reqwidth() + 6
+        h = min(frm.winfo_reqheight() + 6, win.winfo_screenheight() - 120)
         x = (win.winfo_screenwidth() - w) // 2
         y = max(0, (win.winfo_screenheight() - h) // 2)
         win.geometry(f"{w}x{h}+{x}+{y}")

@@ -355,6 +355,9 @@ class _QueueMixin:
         cmd = [GALLERYDL_BIN,
                "-o", f"base-directory={self._gallery_output_dir(task.url)}",
                "--download-archive", GALLERY_ARCHIVE]
+        dirfmt = self._gallery_dirfmt(task.url)
+        if dirfmt:
+            cmd += ["-o", f'directory=["{dirfmt}"]']
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]
         cmd.append(task.url)
