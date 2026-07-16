@@ -8,8 +8,8 @@ PyInstaller doesn't cross-compile.
 Output: dist/tracedownloader.exe
 
 app.py + engine/ + i18n.py are plain-stdlib (tkinter, sqlite3, subprocess...)
-- no FastAPI/uvicorn/static assets needed for this build, unlike the Linux
-web deployment (see requirements.txt / deploy/install.sh for that side).
+- no FastAPI/uvicorn/static assets needed for this build, unlike the web
+server version (see requirements.txt / deploy/install.sh for that side).
 """
 import os
 import PyInstaller.__main__

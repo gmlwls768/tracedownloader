@@ -3,7 +3,7 @@ Desktop app for the packaged Windows build (see deploy/build_windows.py).
 
 A native tkinter GUI, not a browser window - it imports the engine package
 directly and calls it in-process. No HTTP server, no port, nothing to open
-in a browser. The Linux deployment is unrelated to this file; it runs
+in a browser. The web server version is unrelated to this file; it runs
 server.py/static/index.html as a small web server instead (see
 deploy/install.sh) - both front ends share the exact same engine package.
 
@@ -17,6 +17,7 @@ import ctypes
 import json
 import os
 import queue
+import shutil
 import sys
 import threading
 import time
@@ -134,6 +135,19 @@ def ensure_dependencies(on_progress=None):
             os.remove(tmp_zip)
 
 
+def missing_dependencies():
+    """Names of the tools that are still nowhere to be found after
+    ensure_dependencies() (neither in bin/ nor on PATH). The app still runs
+    without them - downloads just fail with a clear per-task error - so this
+    only feeds a startup warning, never blocks the launch."""
+    missing = []
+    for exe in ("yt-dlp.exe", "gallery-dl.exe", "ffmpeg.exe", "ffprobe.exe"):
+        name = exe[:-4]
+        if not os.path.isfile(os.path.join(BIN_DIR, exe)) and not shutil.which(name):
+            missing.append(name)
+    return missing
+
+
 def fmt_speed(bps):
     if not bps or bps <= 0:
         return "0 B/s"
@@ -169,7 +183,7 @@ def explorer_select(path):
 
 
 STATE_ICON = {"completed": "✓", "error": "✗", "downloading": "⬇",
-              "paused": "⏸", "skipped": "⤤", "queued": "·",
+              "paused": "⏸", "skipped": "⤵", "queued": "·",
               "cancelled": "✕", "resolving": "…"}
 STATE_COLOR = {"completed": "#3fae76", "error": "#e05555", "downloading": "#4a9eff",
                "paused": "#d8a637", "skipped": "#8b8d98", "queued": "#8b8d98",
@@ -196,7 +210,8 @@ class App:
         self.toast_job = None
         self.drag_item = None
 
-        root.title("TraceDownloader")
+        from engine import APP_VERSION
+        root.title(f"TraceDownloader v{APP_VERSION}")
         root.geometry(cfg.get("geometry", "1180x760"))
         root.protocol("WM_DELETE_WINDOW", self.on_quit)
 
@@ -505,7 +520,9 @@ class App:
     def _insert_group_row(self, g):
         gid = g["id"]
         iid = f"g_{gid}"
-        name = ("★ " if g.get("priority") else "") + (g["url"] or "")
+        name = (("★ " if g.get("priority") else "")
+                + ("🔕 " if g.get("no_recheck") else "")
+                + (g["url"] or ""))
         expected = g.get("expected")
         cnt = f"{g['completed']}/{expected if expected is not None else '?'} ({g.get('pct', 0)}%)"
         dl = str(g["dling"]) if g.get("dling") else ""
@@ -716,6 +733,8 @@ class App:
         m.add_separator()
         m.add_command(label=t("ctx_priority"), command=lambda: self.do_action("priority"))
         m.add_command(label=t("ctx_move_active"), command=lambda: self.do_action("move_active"))
+        m.add_command(label=t("ctx_recheck_exclude"),
+                      command=lambda: self.do_action("toggle_recheck_exclude"))
         m.add_command(label=t("ctx_copy_url"), command=self.copy_urls)
         m.add_separator()
         m.add_command(label=t("ctx_open_video"), command=lambda: self.open_selected(True))
@@ -884,6 +903,9 @@ class App:
         autosave_var = tk.IntVar(value=s["autosave_minutes"])
         add(t("s_autosave"), ttk.Spinbox(frm, from_=0, to=120, textvariable=autosave_var, width=10))
 
+        recheck_var = tk.IntVar(value=s["recheck_interval_days"])
+        add(t("s_recheck_days"), ttk.Spinbox(frm, from_=0, to=365, textvariable=recheck_var, width=10))
+
         outdir_var = tk.StringVar(value=s["output_dir"])
         outdir_frame = ttk.Frame(frm)
         ttk.Entry(outdir_frame, textvariable=outdir_var, width=38).pack(side="left")
@@ -915,6 +937,8 @@ class App:
         ttk.Button(autoupdate_frame, text=t("s_check_updates_now"),
                   command=lambda: self.check_tool_updates_now()).pack(side="left", padx=(10, 0))
         add("", autoupdate_frame)
+
+        add(t("s_app_version"), ttk.Label(frm, text=f'TraceDownloader v{s.get("app_version", "")}'))
 
         tools_frame = ttk.Frame(frm)
         for name, info in s.get("tools", {}).items():
@@ -991,6 +1015,7 @@ class App:
             self.engine.set_settings({
                 "max_concurrent": max_var.get(),
                 "autosave_minutes": autosave_var.get(),
+                "recheck_interval_days": recheck_var.get(),
                 "output_dir": outdir_var.get(),
                 "res_filter_height": res_var.get(),
                 "size_filter_mb": size_var.get(),
@@ -1046,16 +1071,27 @@ def main():
     ttk.Label(root, textvariable=status_var, padding=24).pack(expand=True)
 
     done = threading.Event()
+    missing = []
 
     def worker():
         ensure_dependencies(
             on_progress=lambda name: root.after(0, status_var.set, f"Downloading {name}…"))
+        missing.extend(missing_dependencies())
         done.set()
 
     threading.Thread(target=worker, daemon=True).start()
 
     def poll():
         if done.is_set():
+            if missing:
+                # Auto-download failed (offline, blocked, ...). Warn and keep
+                # going - downloads will error per-task until the tools exist.
+                messagebox.showwarning(
+                    "TraceDownloader",
+                    "Missing tools: " + ", ".join(missing)
+                    + f"\nCouldn't download them automatically.\n"
+                      f"Place them in {BIN_DIR} (or on PATH) and restart.",
+                    parent=root)
             _build_main_app(root)
         else:
             root.after(200, poll)

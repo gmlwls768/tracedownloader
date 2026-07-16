@@ -177,6 +177,7 @@ en: {
   ctx_fresh: '⟳ Redownload from scratch', ctx_res_check: '📏 Check resolution',
   ctx_size_check: '📦 Check size', ctx_missing_check: '🔍 Find missing files',
   ctx_priority: '★ Download first', ctx_move_active: '📂 Move to active',
+  ctx_recheck_exclude: '🔕 Skip in bulk re-check (toggle)',
   ctx_copy_url: '🔗 Copy URL', ctx_open_video: '▶ Open video (desktop helper)',
   ctx_open_folder: '📁 Open folder (desktop helper)',
   ctx_delete: '🗑 Delete (keep files)', ctx_delete_files: '🗑 Delete (with files)',
@@ -220,6 +221,7 @@ en: {
   s_language: 'Language',
   s_max_concurrent: 'Concurrent downloads',
   s_autosave: 'Autosave interval (minutes, 0 = 30s)',
+  s_recheck_days: 'Scheduled re-check interval (days, 0 = off)',
   s_outdir: 'Output folder',
   s_res: 'Resolution threshold (short side, px)',
   s_size: 'Size threshold (MB, redownload at/below)',
@@ -228,9 +230,9 @@ en: {
   s_small_first: 'Download smaller groups first',
   s_hp_first: 'Download groups closest to finished first',
   s_font: 'Font size',
-  font_xs: 'Very small', font_small: 'Small', font_normal: 'Normal', font_large: 'Large', font_xl: 'Extra large',
+  font_xs: 'Extra small', font_small: 'Small', font_normal: 'Normal', font_large: 'Large', font_xl: 'Extra large',
   s_persist_label: 'Track permanently (database)',
-  s_persist_hint: 'One pattern per line. A URL is only tracked forever (resumable, deduplicated, re-checkable) if it contains one of these — everything else downloads once and shows under "This session" only. Example: youtube.com — or use * on its own to track everything.',
+  s_persist_hint: 'One pattern per line. A URL is only tracked forever (resumable, deduplicated, re-checkable) if it contains one of these — everything else downloads once and shows under "This session" only. Example: youtube.com — or use * on its own to track everything. Prefix a line with ! to exclude: * plus !youtube.com tracks everything except YouTube.',
   s_sitefolders_label: 'Per-site output folders',
   s_sitefolders_hint: 'One "pattern => subfolder" per line. A URL containing the pattern downloads under Output folder/subfolder instead of directly in Output folder. Example: youtube.com => videos/youtube — everything else keeps using the default.',
   s_gallery_template_label: 'Gallery folder name format',
@@ -243,6 +245,7 @@ en: {
   s_check_updates_now: 'Check now',
   s_tool_versions: 'Tool versions',
   s_tool_updated_at: 'updated {date}',
+  s_app_version: 'App version',
   settings_cancel: 'Cancel', settings_save: 'Save', settings_saved_toast: '⚙ Settings saved',
   state_queued: 'Queued', state_downloading: 'Downloading', state_completed: 'Completed',
   state_paused: 'Paused', state_error: 'Error', state_skipped: 'Skipped',
@@ -253,9 +256,11 @@ en: {
   // message codes (engine/models.py, via M())
   add_batch_progress: '📋 {count} URLs — adding one by one…',
   already_downloaded: 'Already downloaded',
+  auto_recheck_run: '⏰ Scheduled re-check — checking all completed groups',
   autosave_done: '💾 Autosaved',
   binary_not_found: "Couldn't find {tool}",
   bulk_recheck_progress: '🔄 Checking {count} group(s)…',
+  bulk_recheck_progress_excluded: '🔄 Checking {count} group(s)… ({excluded} excluded)',
   bulk_redownload_progress: '🔄 Resetting {count} group(s)…',
   bulk_retry_summary: '↺ Retried {retried}',
   bulk_retry_summary_excluded: '↺ Retried {retried} (excluded {excluded} private/removed)',
@@ -279,8 +284,11 @@ en: {
   fresh_restart: 'Redownloading from scratch…',
   gallery_already_exists: '⤵ Already exists — {path}',
   gallery_done: '✓ Done — {path}',
+  gallery_done_new: '✓ Done — {count} new file(s)',
   gallery_downloading: 'Downloading…',
   gallery_downloading_count: 'Downloading… (about {count} files)',
+  gallery_no_new: '✓ Done — nothing new',
+  gallery_progress_files: 'Downloading… {count} new file(s)',
   group_already_rechecking: '⏳ Already re-checking this group',
   group_progress: '{remaining} remaining  |  {done} done',
   group_recheck_existing: '🔁 Existing group — checking for new videos…',
@@ -294,7 +302,9 @@ en: {
   output_dir_empty_abort: "No video files found anywhere in the output folder — aborting in case it's just unmounted",
   output_dir_missing: "Output folder not found: {path} — check that it's mounted",
   paused_msg: 'Paused',
+  recheck_excluded: '🔕 Excluded from bulk re-check',
   recheck_failed: "Re-check failed: {error}",
+  recheck_included: '🔔 Included in bulk re-check again',
   rechecking: 'Re-checking…',
   res_check_collecting: '📏 Collecting file list…',
   res_check_no_targets: '📏 No completed videos to check',
@@ -330,9 +340,9 @@ ko: {
   search_placeholder: '🔍 검색 (URL/제목/메시지)',
   tab_active: '진행 중', tab_done: '완료', tab_ephemeral: '이번 세션',
   tab_ephemeral_title: '영구 추적 패턴에 안 걸린 갤러리·영상 — 이 서버가 켜져있는 동안만 표시되고 DB에는 저장되지 않습니다.',
-  sort_modified: '수정된 순', sort_created: '만든 순', sort_name: '이름순',
+  sort_modified: '수정된 순', sort_created: '추가된 순', sort_name: '이름순',
   asc_desc: '▼ 내림차순', asc_asc: '▲ 오름차순',
-  done_recheck_all: '🔄 전체 재확인', done_retry_all: '↺ Error/Skip 재시도',
+  done_recheck_all: '🔄 전체 재확인', done_retry_all: '↺ 오류/건너뜀 재시도',
   done_redownload_all: '⟳ 전체 재다운로드', done_res_check: '📏 해상도 검사',
   done_size_check: '📦 용량 검사', done_missing_check: '🔍 누락 파일 검사',
   col_name: '이름 / URL', col_state: '상태', col_progress: '진행',
@@ -348,6 +358,7 @@ ko: {
   ctx_fresh: '⟳ 처음부터 재다운로드', ctx_res_check: '📏 해상도 검사',
   ctx_size_check: '📦 용량 검사', ctx_missing_check: '🔍 누락 파일 검사',
   ctx_priority: '★ 최우선 다운로드', ctx_move_active: '📂 진행 중으로 이동',
+  ctx_recheck_exclude: '🔕 전체 재확인에서 제외/해제',
   ctx_copy_url: '🔗 URL 복사', ctx_open_video: '▶ 동영상 열기 (데스크톱 헬퍼)',
   ctx_open_folder: '📁 파일 위치 열기 (데스크톱 헬퍼)',
   ctx_delete: '🗑 삭제 (작업만)', ctx_delete_files: '🗑 삭제 (파일 포함)',
@@ -363,7 +374,7 @@ ko: {
   redownload_all_body: '완료된 그룹 {n}개를 모두 처음부터 다시 다운로드합니까?',
   recheck_all_title: '🔄 전체 재확인',
   recheck_all_body: '완료된 그룹 {n}개에서 새로 올라온 영상이 있는지 다시 확인합니까?',
-  retry_all_title: '↺ Error/Skip 재시도',
+  retry_all_title: '↺ 오류/건너뜀 재시도',
   retry_all_body: '오류/건너뜀 상태의 영상을 모두 다시 시도합니까?<br><span style="color:var(--fg-dim)">비공개/삭제된 영상은 자동 제외됩니다.</span>',
   res_check_all_body: '완료 영상 전체의 해상도를 검사합니까?<br>짧은 변이 <b>{height}px 미만</b>이거나 손상된 파일은 재다운로드됩니다.<br>(기준은 ⚙설정에서 변경)',
   size_check_all_body: '완료 영상 전체의 파일 용량을 검사합니까?<br><b>{size}MB 이하</b>이거나 읽기 실패한 파일은 재다운로드됩니다.<br>(기준은 ⚙설정에서 변경)',
@@ -391,6 +402,7 @@ ko: {
   s_language: '언어',
   s_max_concurrent: '동시 다운로드 수 (영상 개수)',
   s_autosave: '자동 저장 주기 (분, 0=30초)',
+  s_recheck_days: '예약 재확인 주기 (일, 0=끄기)',
   s_outdir: '출력 폴더',
   s_res: '해상도 기준 (짧은 변, px)',
   s_size: '용량 기준 (MB, 이하 재다운로드)',
@@ -401,7 +413,7 @@ ko: {
   s_font: '글자 크기',
   font_xs: '아주 작게', font_small: '작게', font_normal: '보통', font_large: '크게', font_xl: '아주 크게',
   s_persist_label: '영구 추적할 사이트 패턴 (DB 저장)',
-  s_persist_hint: '한 줄에 하나씩 — URL에 이 중 하나라도 포함되면 영구 추적(이어받기/중복방지/재확인)됩니다. 그 외에는 한 번만 받고 "이번 세션"에만 표시됩니다. 예: youtube.com — 전체를 영구 추적하려면 * 한 줄만 입력.',
+  s_persist_hint: '한 줄에 하나씩 — URL에 이 중 하나라도 포함되면 영구 추적(이어받기/중복방지/재확인)됩니다. 그 외에는 한 번만 받고 "이번 세션"에만 표시됩니다. 예: youtube.com — 전체를 영구 추적하려면 * 한 줄만 입력. 앞에 !를 붙이면 제외: * 와 !youtube.com을 함께 쓰면 유튜브만 빼고 전부 추적.',
   s_sitefolders_label: '사이트별 출력 폴더',
   s_sitefolders_hint: '한 줄에 하나씩, "패턴 => 하위폴더" 형식. URL에 패턴이 포함되면 출력 폴더 바로 밑이 아니라 출력 폴더/하위폴더 밑에 저장됩니다. 예: youtube.com => videos/youtube — 나머지는 기본 출력 폴더 그대로 사용.',
   s_gallery_template_label: '갤러리 폴더명 형식',
@@ -414,6 +426,7 @@ ko: {
   s_check_updates_now: '지금 확인',
   s_tool_versions: '툴 버전',
   s_tool_updated_at: '{date} 적용',
+  s_app_version: '앱 버전',
   settings_cancel: '취소', settings_save: '저장', settings_saved_toast: '⚙ 설정 저장됨',
   state_queued: '대기', state_downloading: '다운로드 중', state_completed: '완료',
   state_paused: '일시정지', state_error: '오류', state_skipped: '건너뜀',
@@ -423,9 +436,11 @@ ko: {
   stats_speed_idle: '평균 속도: -  |  다운로드 중: 0',
   add_batch_progress: '📋 {count}개 URL — 순차 추가 중…',
   already_downloaded: '이미 다운로드됨',
+  auto_recheck_run: '⏰ 예약 재확인 — 완료 그룹 전체를 확인합니다',
   autosave_done: '💾 자동 저장 완료',
-  binary_not_found: '{tool}를 찾을 수 없습니다',
+  binary_not_found: '{tool}을(를) 찾을 수 없습니다',
   bulk_recheck_progress: '🔄 {count}개 확인 중…',
+  bulk_recheck_progress_excluded: '🔄 {count}개 확인 중… (제외 {excluded}개)',
   bulk_redownload_progress: '🔄 {count}개 초기화 중…',
   bulk_retry_summary: '↺ 재시도 {retried}개',
   bulk_retry_summary_excluded: '↺ 재시도 {retried}개 (비공개/삭제됨 {excluded}개 제외)',
@@ -449,8 +464,11 @@ ko: {
   fresh_restart: '처음부터 재다운로드…',
   gallery_already_exists: '⤵ 이미 존재함 — {path}',
   gallery_done: '✓ 완료 — {path}',
+  gallery_done_new: '✓ 완료 — 새 파일 {count}개',
   gallery_downloading: '다운로드 중…',
   gallery_downloading_count: '다운로드 중… (예상 {count}개)',
+  gallery_no_new: '✓ 완료 — 새 항목 없음',
+  gallery_progress_files: '다운로드 중… 새 파일 {count}개',
   group_already_rechecking: '⏳ 이미 재확인 중인 그룹입니다',
   group_progress: '남은 영상 {remaining}개  |  완료 {done}개',
   group_recheck_existing: '🔁 기존 그룹 — 새 영상 확인 중…',
@@ -464,7 +482,9 @@ ko: {
   output_dir_empty_abort: '출력 폴더에서 영상 파일을 하나도 찾지 못했습니다 — 마운트가 빠졌을 수 있어 중단합니다',
   output_dir_missing: '출력 폴더가 없습니다: {path} — 마운트 상태를 확인하세요',
   paused_msg: '일시정지',
+  recheck_excluded: '🔕 전체 재확인에서 제외됨',
   recheck_failed: '재확인 실패: {error}',
+  recheck_included: '🔔 전체 재확인에 다시 포함됨',
   rechecking: '재확인 중…',
   res_check_collecting: '📏 파일 목록 수집 중…',
   res_check_no_targets: '📏 검사할 완료 영상이 없습니다',
@@ -621,10 +641,11 @@ function groupRow(g, showRank) {
   const cnt = `${g.completed}/${g.expected === null ? '?' : g.expected} (${g.pct}%)`;
   const dl = g.dling ? `${g.dling}` : '';
   const prio = g.priority ? '<span class="prio">★</span> ' : '';
+  const bell = g.no_recheck ? `<span title="${esc(t('recheck_excluded'))}">🔕</span> ` : '';
   const msg = decodeMsg(g.message);
   return `<tr class="row grouprow g-${g.state} ${SELECTED.has(g.id) ? 'sel' : ''}" data-id="${g.id}" data-kind="group" draggable="${TAB === 'active'}">
     <td><span class="expander" data-exp="${g.id}">${arrow}</span>${rankTxt}</td>
-    <td class="namecell" title="${esc(g.url)}">${prio}${esc(g.url)}</td>
+    <td class="namecell" title="${esc(g.url)}">${prio}${bell}${esc(g.url)}</td>
     <td class="${stateCls(g.state)}">${esc(stateLabel(g.state))}</td>
     <td>${cnt}</td><td>${esc(dl)}</td>
     <td class="msgcell" title="${esc(msg)}">${esc(msg)}</td></tr>`;
@@ -766,6 +787,7 @@ function buildCtx() {
     { hr: 1 },
     { label: t('ctx_priority'),     act: () => doAction('priority') },
     { label: t('ctx_move_active'),  act: () => doAction('move_active') },
+    { label: t('ctx_recheck_exclude'), act: () => doAction('toggle_recheck_exclude') },
     { label: t('ctx_copy_url'),     act: copyUrls },
     { hr: 1 },
     { label: t('ctx_open_video'),   act: () => openInDesktop(true) },
@@ -998,6 +1020,7 @@ async function openSettings() {
     </select></div>
     <div class="frow"><label>${esc(t('s_max_concurrent'))}</label><input type="number" id="s-max" min="1" max="64" value="${s.max_concurrent}"></div>
     <div class="frow"><label>${esc(t('s_autosave'))}</label><input type="number" id="s-autosave" min="0" max="120" value="${s.autosave_minutes}"></div>
+    <div class="frow"><label>${esc(t('s_recheck_days'))}</label><input type="number" id="s-recheck-days" min="0" max="365" value="${s.recheck_interval_days}"></div>
     <div class="frow"><label>${esc(t('s_outdir'))}</label><input type="text" id="s-outdir" class="wide" value="${esc(s.output_dir)}"></div>
     <div class="frow"><label>${esc(t('s_res'))}</label><input type="number" id="s-res" min="144" max="4320" value="${s.res_filter_height}"></div>
     <div class="frow"><label>${esc(t('s_size'))}</label><input type="number" id="s-size" min="1" max="100000" value="${s.size_filter_mb}"></div>
@@ -1007,6 +1030,7 @@ async function openSettings() {
     <div class="frow"><label><input type="checkbox" id="s-hp" ${s.high_progress_first ? 'checked' : ''}> ${esc(t('s_hp_first'))}</label></div>
     <div class="frow"><label><input type="checkbox" id="s-autoupdate" ${s.auto_update_tools ? 'checked' : ''}> ${esc(t('s_auto_update'))}</label>
       <button type="button" onclick="checkToolUpdatesNow()">${esc(t('s_check_updates_now'))}</button></div>
+    <div class="frow"><label>${esc(t('s_app_version'))}</label><span>TraceDownloader v${esc(s.app_version || '')}</span></div>
     <div class="frow" style="align-items:flex-start"><label style="padding-top:2px">${esc(t('s_tool_versions'))}</label>
       <div style="line-height:1.7">${Object.entries(s.tools || {}).map(([name, info]) => `
         <div>${esc(name)} <b>${esc(info.version || '?')}</b>${info.updated_at
@@ -1040,6 +1064,7 @@ async function saveSettings() {
   const s = {
     max_concurrent:      +$('s-max').value,
     autosave_minutes:    +$('s-autosave').value,
+    recheck_interval_days: +$('s-recheck-days').value,
     output_dir:          $('s-outdir').value,
     res_filter_height:   +$('s-res').value,
     size_filter_mb:      +$('s-size').value,

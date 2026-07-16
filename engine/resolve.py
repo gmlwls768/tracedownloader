@@ -16,18 +16,38 @@ from .models import *  # noqa: F401,F403 - internal package, see models.py __all
 class _ResolveMixin:
     @staticmethod
     def _parse_patterns(text):
-        return [ln.strip().lower() for ln in (text or "").splitlines() if ln.strip()]
+        """One pattern per line. A leading "!" marks an exclusion; a leading
+        http(s):// scheme is dropped from the pattern (it never helps a
+        substring match, and "https://youtube.com" would otherwise silently
+        fail to match "https://www.youtube.com/...")."""
+        pats = []
+        for ln in (text or "").splitlines():
+            ln = ln.strip().lower()
+            if not ln:
+                continue
+            neg = ln.startswith("!")
+            body = ln[1:].strip() if neg else ln
+            body = re.sub(r'^https?://', '', body)
+            if body:
+                pats.append("!" + body if neg else body)
+        return pats
 
     def _matches_persist(self, url):
         """True if `url` matches one of the user's "track forever" patterns
         (plain case-insensitive substring match - see settings). A lone "*"
-        pattern means "track everything"."""
-        if not self._cfg_persist_patterns:
+        pattern means "track everything". "!pattern" lines exclude matching
+        URLs and win over any include, so "*" + "!youtube.com" tracks
+        everything except YouTube."""
+        pats = self._cfg_persist_patterns
+        if not pats:
             return False
-        if "*" in self._cfg_persist_patterns:
-            return True
         ul = url.lower()
-        return any(p in ul for p in self._cfg_persist_patterns)
+        if any(p[1:] in ul for p in pats if p.startswith("!")):
+            return False
+        includes = [p for p in pats if not p.startswith("!")]
+        if "*" in includes:
+            return True
+        return any(p in ul for p in includes)
 
     @staticmethod
     def _parse_site_folders(text):
@@ -39,7 +59,8 @@ class _ResolveMixin:
             if not ln or "=>" not in ln:
                 continue
             pattern, folder = ln.split("=>", 1)
-            pattern, folder = pattern.strip().lower(), folder.strip().strip("/\\")
+            pattern = re.sub(r'^https?://', '', pattern.strip().lower())
+            folder  = folder.strip().strip("/\\")
             if pattern and folder:
                 pairs.append((pattern, folder))
         return pairs
@@ -149,6 +170,11 @@ class _ResolveMixin:
             threading.Thread(target=self._resolve_worker, daemon=True).start()
 
     def _fetch_and_create_inner(self, group):
+        if group.media == "gallery":
+            # Known gallery group (from a previous resolve): skip the yt-dlp
+            # probe entirely and go straight to the gallery-dl path.
+            self._setup_gallery_group(group)
+            return
         cookies_tmp = self._cookies_tempcopy()
         cmd = [YTDLP_BIN, "--flat-playlist", "-J", "--no-warnings"]
         if cookies_tmp:
@@ -172,7 +198,18 @@ class _ResolveMixin:
                     group.last_message = M("recheck_failed", error=str(e))
                 self._request_refresh()
             else:
-                self._set_group_state(group, "error", M("resolve_error", reason=str(e)))
+                # yt-dlp can't list it, but an image site (artist page,
+                # gallery) may still be fully supported by gallery-dl —
+                # same split-coverage situation the ephemeral path handles.
+                g_cookies = self._cookies_tempcopy()
+                try:
+                    meta = self._gallerydl_probe(group.url, g_cookies)
+                finally:
+                    self._cleanup_cookies_tmp(g_cookies)
+                if meta is not None:
+                    self._setup_gallery_group(group, meta)
+                else:
+                    self._set_group_state(group, "error", M("resolve_error", reason=str(e)))
             return
         finally:
             self._cleanup_cookies_tmp(cookies_tmp)
@@ -296,6 +333,47 @@ class _ResolveMixin:
             os.replace(tmp, ARCHIVE_FILE)
         except OSError as e:
             print(f"[archive] {e}")
+
+    def _setup_gallery_group(self, group, meta=None):
+        """Persistent tracking for URLs only gallery-dl understands (artist
+        pages, galleries). One child task stands for the whole URL and is
+        downloaded by gallery-dl with a shared --download-archive, so a
+        re-check simply runs the same command again and only newly added
+        files actually transfer."""
+        title = ""
+        if meta:
+            artist, gtitle, gid = _gallery_meta_fields(meta)
+            title = self._format_gallery_name(artist, gtitle, gid)
+        with self.lock:
+            group.media = "gallery"
+            child = next((t for t in self.tasks
+                          if t.parent_group_id == group.id and t.kind == "video"), None)
+            created = child is None
+            if created:
+                child = Task(group.url, kind="video", parent_group_id=group.id)
+            child.media = "gallery"
+            if title and not child.title:
+                child.title = title
+            # (Re-)check: run gallery-dl again unless it's already running.
+            if child.state != "downloading":
+                child._paused = child._cancelled = False
+                child.state, child.last_message = "queued", ""
+            if created:
+                idx = next((i for i, t in enumerate(self.tasks) if t.id == group.id),
+                           len(self.tasks) - 1)
+                self.tasks.insert(idx + 1, child)
+            group.expected_count  = 1
+            group.completed_count = 1 if child.state in ("completed", "skipped") else 0
+            group.state        = _derive_group_state([child])
+            group.last_message = self._group_progress_message([child])
+            group.modified_at  = time.time()
+        try:
+            self.db.save_snapshot([group.to_group_dict()], [child.to_video_dict()])
+        except Exception as e:
+            self._show_toast(M("db_save_failed", error=str(e)))
+        self._request_refresh()
+        if not self.global_stop.is_set() and child.state == "queued":
+            self._requeue_by_tasks_order([child])
 
     def _recheck_group(self, group):
         with self.lock:

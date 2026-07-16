@@ -214,15 +214,32 @@ class _QueueMixin:
             if task.state not in ("queued","error","paused"):
                 self.job_queue.task_done(); continue
             self.sem.acquire()
-            f = self.executor.submit(self._run_download, task)
+            f = self.executor.submit(self._run_download_guarded, task)
             f.add_done_callback(lambda _: self.sem.release())
             self.job_queue.task_done()
+
+    def _run_download_guarded(self, task):
+        """Nothing may escape into the executor future - a raised exception
+        would be silently swallowed there, leaving the task wedged in
+        "downloading" forever with no error shown anywhere."""
+        try:
+            self._run_download(task)
+        except Exception as e:
+            print(f"[download] unexpected error: {e!r}")
+            try:
+                self._set_video_state(task, "error", M("exception", error=str(e)))
+                self._update_group_state(task.parent_group_id)
+            except Exception:
+                pass
 
     def _run_download(self, task):
         if task.kind != "video" or task.state == "skipped":
             self._update_group_state(task.parent_group_id); return
         if task._cancelled:
             self._update_group_state(task.parent_group_id); return
+        if task.media == "gallery":
+            self._run_gallery_task(task)
+            return
 
         self._set_video_state(task, "downloading", M("starting"))
         cookies_tmp = self._cookies_tempcopy()
@@ -323,6 +340,81 @@ class _QueueMixin:
 
         self._update_group_state(task.parent_group_id)
         if task.state in ("completed","error","skipped","paused"):
+            try:
+                self.db.upsert_video(task.to_video_dict())
+            except Exception as e:
+                self._show_toast(M("db_save_failed", error=str(e)))
+
+    def _run_gallery_task(self, task):
+        """A persistent gallery group's single child: the whole URL is handed
+        to gallery-dl, whose --download-archive provides per-file dedup, so
+        a re-check only fetches newly added items."""
+        self._set_video_state(task, "downloading", M("gallery_downloading"))
+        cookies_tmp = self._cookies_tempcopy()
+        cmd = [GALLERYDL_BIN,
+               "-o", f"base-directory={self._gallery_output_dir(task.url)}",
+               "--download-archive", GALLERY_ARCHIVE]
+        if cookies_tmp:
+            cmd += ["--cookies", cookies_tmp]
+        cmd.append(task.url)
+        try:
+            # gallery-dl block-buffers its stdout when piped, which would
+            # delay per-file progress lines by minutes - force line output.
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT,
+                                    text=True, bufsize=1,
+                                    env={**os.environ, "PYTHONUNBUFFERED": "1"})
+        except FileNotFoundError:
+            self._cleanup_cookies_tmp(cookies_tmp)
+            self._set_video_state(task, "error", M("binary_not_found", tool=GALLERYDL_BIN))
+            self._update_group_state(task.parent_group_id); return
+
+        with self._procs_lock:
+            self._procs[task.id] = proc
+
+        new_files, last_line = 0, ""
+        exc = None
+        try:
+            for line in proc.stdout:
+                line = line.rstrip()
+                if not line:
+                    continue
+                last_line = line
+                # A downloaded file prints as its bare path; "# path" is a
+                # skipped existing file and "[...]" lines are log messages.
+                if not line.startswith(("#", "[")):
+                    new_files += 1
+                    with self.lock:
+                        task.last_message = M("gallery_progress_files", count=new_files)
+                    self._request_refresh()
+                if self.global_stop.is_set() or task._cancelled or task._paused:
+                    proc.terminate(); break
+            proc.wait()
+        except Exception as e:
+            exc = e
+            try: proc.terminate()
+            except OSError: pass
+        finally:
+            self._cleanup_cookies_tmp(cookies_tmp)
+            with self._procs_lock:
+                self._procs.pop(task.id, None)
+
+        if exc is not None:
+            self._set_video_state(task, "error", M("exception", error=str(exc)))
+        elif task._cancelled or self.global_stop.is_set():
+            self._set_video_state(task, "paused", M("stopped_task"))
+        elif task._paused:
+            self._set_video_state(task, "paused", M("paused_msg"))
+        elif proc.returncode == 0:
+            msg = M("gallery_done_new", count=new_files) if new_files else M("gallery_no_new")
+            self._set_video_state(task, "completed", msg)
+            self._on_video_completed(task)
+        else:
+            reason = last_line[:120] if last_line else ""
+            self._set_video_state(task, "error", _exit_code_msg(proc.returncode, reason))
+
+        self._update_group_state(task.parent_group_id)
+        if task.state in ("completed", "error", "paused"):
             try:
                 self.db.upsert_video(task.to_video_dict())
             except Exception as e:

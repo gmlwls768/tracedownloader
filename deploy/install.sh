@@ -1,5 +1,5 @@
 #!/bin/bash
-# Linux setup script. Run from the project root:
+# Web server version setup script (Linux). Run from the project root:
 #   bash deploy/install.sh
 #
 # Sets up a venv, downloads standalone yt-dlp/gallery-dl/deno binaries into

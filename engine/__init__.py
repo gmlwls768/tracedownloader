@@ -74,6 +74,7 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
         self._cfg_site_output_folders = self._parse_site_folders(
             self.db.get_meta("site_output_folders", ""))
         self._cfg_auto_update_tools   = self.db.get_bool("auto_update_tools", True)
+        self._cfg_recheck_days        = self.db.get_int("recheck_interval_days", 0)
         self._autosave_interval  = (self._cfg_autosave_min * 60
                                     if self._cfg_autosave_min > 0 else AUTOSAVE_INTERVAL)
 
@@ -124,6 +125,7 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
         threading.Thread(target=self._add_queue_worker, daemon=True).start()
         threading.Thread(target=self._filepath_backfill_worker, daemon=True).start()
         threading.Thread(target=self._update_check_loop, daemon=True).start()
+        threading.Thread(target=self._auto_recheck_loop, daemon=True).start()
 
         if self._cfg_autostart:
             threading.Timer(0.6, self._start_all).start()

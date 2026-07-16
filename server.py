@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     engine.shutdown()
 
 
-app = FastAPI(title="TraceDownloader", lifespan=lifespan)
+app = FastAPI(title="TraceDownloader", version=eng.APP_VERSION, lifespan=lifespan)
 
 
 @app.get("/")

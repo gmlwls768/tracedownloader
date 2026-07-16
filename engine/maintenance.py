@@ -554,12 +554,44 @@ class _MaintenanceMixin:
         with self.lock:
             done_groups = [t for t in self.tasks
                            if t.kind == "group" and t.state == "completed"]
-        if not done_groups:
+        targets  = [g for g in done_groups if not g.no_recheck]
+        excluded = len(done_groups) - len(targets)
+        if not targets:
             self._set_done_status(M("no_done_groups"))
             return
-        for g in done_groups:
+        for g in targets:
             self._recheck_group(g)
-        self._set_done_status(M("bulk_recheck_progress", count=len(done_groups)))
+        if excluded:
+            self._set_done_status(M("bulk_recheck_progress_excluded",
+                                     count=len(targets), excluded=excluded))
+        else:
+            self._set_done_status(M("bulk_recheck_progress", count=len(targets)))
+
+    def _auto_recheck_loop(self):
+        """Scheduled bulk re-check: every N days (Settings, 0 = off) run the
+        same "re-check all completed groups" the Done tab button offers."""
+        while not self._closing.wait(600):
+            self._auto_recheck_tick()
+
+    def _auto_recheck_tick(self):
+        days = self._cfg_recheck_days
+        if days <= 0:
+            return
+        try:
+            last = float(self.db.get_meta("last_auto_recheck", "") or 0)
+        except ValueError:
+            last = 0
+        now = time.time()
+        if not last:
+            # Just enabled: schedule N days from now instead of kicking
+            # off a full re-check the moment the setting is saved.
+            self.db.set_meta("last_auto_recheck", str(now))
+            return
+        if now - last < days * 86400:
+            return
+        self.db.set_meta("last_auto_recheck", str(now))
+        self._show_toast(M("auto_recheck_run"))
+        self._recheck_all_done()
 
     def _retry_all_errors_skipped(self):
         with self.lock:
@@ -706,6 +738,21 @@ class _MaintenanceMixin:
                 self._fresh_download(t)
         elif action == "priority":
             self.set_top_priority(ids)
+        elif action == "toggle_recheck_exclude":
+            changed = []
+            for g in self._groups_for_ids(ids):
+                with self.lock:
+                    g.no_recheck = 0 if g.no_recheck else 1
+                changed.append(g)
+            for g in changed:
+                try:
+                    self.db.upsert_group(g.to_group_dict())
+                except Exception as e:
+                    self._show_toast(M("db_save_failed", error=str(e)))
+            if changed:
+                self._show_toast(M("recheck_excluded" if changed[0].no_recheck
+                                   else "recheck_included"))
+            self._request_refresh()
         elif action == "move_active":
             for t in sel:
                 if t.kind == "group": self._move_to_active(t)

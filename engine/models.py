@@ -31,6 +31,8 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
+APP_VERSION = "1.0.0"
+
 BASE_DIR = os.environ.get("APP_HOME") or os.path.dirname(os.path.abspath(__file__))
 # Where bundled/auto-downloaded tool binaries live. Deliberately separate
 # from BASE_DIR (the *data* folder, e.g. an APP_HOME pointed at a mounted
@@ -97,6 +99,9 @@ DEFAULT_OUTPUT_DIR  = os.environ.get("APP_DEFAULT_OUTPUT", "download")
 OUTPUT_TEMPLATE_TPL = '{dir}/%(uploader)s/%(upload_date>%Y-%m-%d)s - %(title)s [%(id)s].%(ext)s'
 DB_FILE             = os.path.join(BASE_DIR, "app.db")
 ARCHIVE_FILE        = os.path.join(BASE_DIR, "downloaded_archive.txt")
+# gallery-dl's own --download-archive (SQLite). Used by persistent gallery
+# groups so a re-check re-runs the same URL and only new files transfer.
+GALLERY_ARCHIVE     = os.path.join(BASE_DIR, "gallery_archive.sqlite3")
 # Cookies (cookies.txt / Netscape format), managed from the settings screen.
 # Sent to both yt-dlp and gallery-dl on every call - cookies are only ever
 # transmitted to the domain they belong to, so one shared file covering
@@ -109,13 +114,15 @@ ILLEGAL_FS_CHARS_RE = re.compile(r'[\\/:*?"<>|]')
 GENERIC_URL_RE = re.compile(r'https?://\S+', re.IGNORECASE)
 
 
-def M(code, **params):
-    """Build a localizable status message. The client looks `code` up in its
+def M(key, **params):
+    """Build a localizable status message. The client looks `key` up in its
     i18n table and interpolates `params` into the matching template; unknown
-    codes are shown verbatim so nothing silently disappears."""
+    keys are shown verbatim so nothing silently disappears.
+    The first parameter must not be named after any template placeholder:
+    M("exit_code", code=...) passing code= as a param has to keep working."""
     if params:
-        return f"{code}:{json.dumps(params, ensure_ascii=False)}"
-    return code
+        return f"{key}:{json.dumps(params, ensure_ascii=False)}"
+    return key
 
 
 def canon_url(url):
@@ -248,6 +255,16 @@ class DB:
             self._exec("ALTER TABLE groups ADD COLUMN sort_order INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass  # already exists
+        try:
+            # 1 = leave this group out of "Re-check all" / scheduled re-checks.
+            self._exec("ALTER TABLE groups ADD COLUMN no_recheck INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            # '' = resolved/downloaded by yt-dlp, 'gallery' = gallery-dl.
+            self._exec("ALTER TABLE groups ADD COLUMN media TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         self._exec("""CREATE TABLE IF NOT EXISTS videos(
             id TEXT PRIMARY KEY, group_id TEXT, url TEXT NOT NULL,
             state TEXT DEFAULT 'queued', last_message TEXT DEFAULT '',
@@ -267,6 +284,10 @@ class DB:
             self._exec("ALTER TABLE videos ADD COLUMN filepath TEXT")
         except sqlite3.OperationalError:
             pass
+        try:
+            self._exec("ALTER TABLE videos ADD COLUMN media TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         self._exec("""CREATE TABLE IF NOT EXISTS history(
             video_id TEXT PRIMARY KEY, url TEXT, completed_at TEXT)""")
         self._exec("""CREATE TABLE IF NOT EXISTS meta(
@@ -283,24 +304,27 @@ class DB:
                 # (Task.modified_at) - overwriting with `now` in bulk would
                 # make "sort by last modified" meaningless.
                 c.executemany("""INSERT INTO groups
-                    (id,url,state,expected_count,completed_count,last_message,sort_order,created_at,updated_at)
-                    VALUES(:id,:url,:state,:expected_count,:completed_count,:last_message,:sort_order,:now,:updated_at)
+                    (id,url,state,expected_count,completed_count,last_message,sort_order,no_recheck,media,created_at,updated_at)
+                    VALUES(:id,:url,:state,:expected_count,:completed_count,:last_message,:sort_order,:no_recheck,:media,:now,:updated_at)
                     ON CONFLICT(id) DO UPDATE SET state=excluded.state,
                     expected_count=excluded.expected_count,
                     completed_count=excluded.completed_count,
                     last_message=excluded.last_message,
                     sort_order=excluded.sort_order,
+                    no_recheck=excluded.no_recheck,
+                    media=excluded.media,
                     updated_at=excluded.updated_at
                 """, [{**g, "now": now} for g in groups])
             if videos:
                 c.executemany("""INSERT INTO videos
-                    (id,group_id,url,state,last_message,extractor_id,title,filepath,created_at,updated_at)
-                    VALUES(:id,:group_id,:url,:state,:last_message,:extractor_id,:title,:filepath,:now,:now)
+                    (id,group_id,url,state,last_message,extractor_id,title,filepath,media,created_at,updated_at)
+                    VALUES(:id,:group_id,:url,:state,:last_message,:extractor_id,:title,:filepath,:media,:now,:now)
                     ON CONFLICT(id) DO UPDATE SET state=excluded.state,
                     last_message=excluded.last_message,
                     extractor_id=COALESCE(excluded.extractor_id, videos.extractor_id),
                     title=COALESCE(NULLIF(excluded.title,''), videos.title),
                     filepath=COALESCE(excluded.filepath, videos.filepath),
+                    media=excluded.media,
                     updated_at=excluded.updated_at
                 """, [{**v, "now": now} for v in videos])
             c.commit()
@@ -441,6 +465,8 @@ class Task:
         self.sort_order      = sort_order
         self.title           = ""
         self.filepath        = None  # final path once completed (instant "locate")
+        self.media           = ""    # '' = yt-dlp, 'gallery' = gallery-dl
+        self.no_recheck      = 0     # groups: 1 = skip in bulk/scheduled re-check
         self.priority        = 0     # 1 = always sorts first, regardless of sort option
         self.new_count       = 0
         self.skip_count      = 0
@@ -455,6 +481,8 @@ class Task:
                     completed_count=self.completed_count,
                     last_message=self.last_message,
                     sort_order=self.sort_order,
+                    no_recheck=self.no_recheck,
+                    media=self.media,
                     updated_at=datetime.fromtimestamp(self.modified_at, UTC).isoformat())
 
     def to_video_dict(self):
@@ -463,7 +491,8 @@ class Task:
                     last_message=self.last_message,
                     extractor_id=self.extractor_id,
                     title=self.title or "",
-                    filepath=self.filepath)
+                    filepath=self.filepath,
+                    media=self.media)
 
     @staticmethod
     def from_group_row(r):
@@ -472,12 +501,15 @@ class Task:
             except: return time.time()
         ca = _ts(r["created_at"])  if r["created_at"]  else time.time()
         ma = _ts(r["updated_at"])  if r["updated_at"]  else ca
-        return Task(r["url"], r["id"], kind="group", state=r["state"],
-                    last_message=r["last_message"] or "",
-                    expected_count=r["expected_count"],
-                    completed_count=r["completed_count"] or 0,
-                    created_at=ca, modified_at=ma,
-                    sort_order=r["sort_order"] if "sort_order" in r.keys() else 0)
+        t = Task(r["url"], r["id"], kind="group", state=r["state"],
+                 last_message=r["last_message"] or "",
+                 expected_count=r["expected_count"],
+                 completed_count=r["completed_count"] or 0,
+                 created_at=ca, modified_at=ma,
+                 sort_order=r["sort_order"] if "sort_order" in r.keys() else 0)
+        t.no_recheck = r["no_recheck"] if "no_recheck" in r.keys() and r["no_recheck"] else 0
+        t.media = r["media"] if "media" in r.keys() and r["media"] else ""
+        return t
 
     @staticmethod
     def from_video_row(r):
@@ -487,6 +519,7 @@ class Task:
                  extractor_id=r["extractor_id"] if "extractor_id" in r.keys() else None)
         t.title = r["title"] if "title" in r.keys() else ""
         t.filepath = r["filepath"] if "filepath" in r.keys() else None
+        t.media = r["media"] if "media" in r.keys() and r["media"] else ""
         return t
 
 
@@ -540,6 +573,7 @@ def _derive_group_state(children: list) -> str:
 # modules in this package - internal wiring, not a public API.
 __all__ = [
     "ALREADY_LINE_RE",
+    "APP_VERSION",
     "ARCHIVE_FILE",
     "AUTOSAVE_INTERVAL",
     "BASE_DIR",
@@ -553,6 +587,7 @@ __all__ = [
     "FFPROBE_BIN",
     "FILENAME_TITLE_RE",
     "GALLERYDL_BIN",
+    "GALLERY_ARCHIVE",
     "GENERIC_URL_RE",
     "ILLEGAL_FS_CHARS_RE",
     "M",

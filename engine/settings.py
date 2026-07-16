@@ -12,9 +12,11 @@ from .models import *  # noqa: F401,F403 - internal package, see models.py __all
 class _SettingsMixin:
     def get_settings(self):
         return {
+            "app_version":          APP_VERSION,
             "autostart":            self._cfg_autostart,
             "max_concurrent":       self._cfg_max_concurrent,
             "autosave_minutes":     self._cfg_autosave_min,
+            "recheck_interval_days": self._cfg_recheck_days,
             "output_dir":           self._cfg_output_dir,
             "save_on_add":          self._cfg_save_on_add,
             "small_group_first":    self._cfg_small_first,
@@ -106,6 +108,7 @@ class _SettingsMixin:
 
         self._cfg_autostart      = bool(s.get("autostart", self._cfg_autostart))
         self._cfg_autosave_min   = max(0, int(s.get("autosave_minutes", self._cfg_autosave_min)))
+        self._cfg_recheck_days   = max(0, int(s.get("recheck_interval_days", self._cfg_recheck_days)))
         self._cfg_output_dir     = (s.get("output_dir") or "").strip() or DEFAULT_OUTPUT_DIR
         self._cfg_save_on_add    = bool(s.get("save_on_add", self._cfg_save_on_add))
         self._cfg_small_first         = bool(s.get("small_group_first", self._cfg_small_first))
@@ -125,6 +128,7 @@ class _SettingsMixin:
         self.db.set_meta("autostart",           "1" if self._cfg_autostart else "0")
         self.db.set_meta("max_concurrent",      str(new_max))
         self.db.set_meta("autosave_minutes",    str(self._cfg_autosave_min))
+        self.db.set_meta("recheck_interval_days", str(self._cfg_recheck_days))
         self.db.set_meta("output_dir",          self._cfg_output_dir)
         self.db.set_meta("save_on_add",         "1" if self._cfg_save_on_add else "0")
         self.db.set_meta("small_group_first",   "1" if self._cfg_small_first else "0")
@@ -209,6 +213,7 @@ class _SettingsMixin:
                 "dling": dling_per_group.get(g.id, 0),
                 "message": (g.last_message or "")[:200],
                 "priority": g.priority,
+                "no_recheck": bool(g.no_recheck),
                 "created_at": g.created_at, "modified_at": g.modified_at,
                 "expanded": g.id in expanded_ids,
             }
