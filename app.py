@@ -67,11 +67,16 @@ EXE_DOWNLOADS = {
     # project's README points to this sibling repo's daily builds instead.
     "gallery-dl.exe": "https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_windows.exe",
 }
-# A long-standing, widely used source of static Windows ffmpeg builds
-# (referenced by yt-dlp's own documentation). Swap this out, or drop
-# ffmpeg.exe/ffprobe.exe into bin/ yourself, if you'd rather not fetch it
-# from here.
-FFMPEG_ZIP_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+# Static Windows ffmpeg builds. The primary source is the yt-dlp project's
+# own FFmpeg-Builds GitHub release - CDN-backed and reliable; gyan.dev (a
+# single non-CDN host that periodically rate-limits a 100MB+ download) is
+# only a fallback. Whichever zip is fetched, ffmpeg.exe/ffprobe.exe are
+# matched by basename inside it, so the internal folder layout doesn't
+# matter. Drop the two .exes into bin/ yourself to skip this entirely.
+FFMPEG_ZIP_URLS = [
+    "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip",
+    "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+]
 
 # Small local file for GUI-only preferences that have no place in the
 # engine's shared, cross-platform settings (the web UI keeps language in the
@@ -120,19 +125,27 @@ def ensure_dependencies(on_progress=None):
     if on_progress:
         on_progress("ffmpeg.exe")
     tmp_zip = os.path.join(BASE, "_ffmpeg_download.zip")
-    try:
-        _download(FFMPEG_ZIP_URL, tmp_zip)
-        with zipfile.ZipFile(tmp_zip) as z:
-            for info in z.infolist():
-                name = os.path.basename(info.filename)
-                if name in ("ffmpeg.exe", "ffprobe.exe"):
-                    with z.open(info) as src, open(os.path.join(BIN_DIR, name), "wb") as dst:
-                        dst.write(src.read())
-    except Exception as e:
-        print(f"Couldn't download ffmpeg: {e}\nPlace ffmpeg.exe/ffprobe.exe in {BIN_DIR} manually.")
-    finally:
-        if os.path.isfile(tmp_zip):
-            os.remove(tmp_zip)
+    # Try each source in turn; stop as soon as both binaries are extracted,
+    # so a flaky/slow primary host falls through to the fallback instead of
+    # leaving the app with no ffmpeg.
+    for url in FFMPEG_ZIP_URLS:
+        try:
+            _download(url, tmp_zip)
+            with zipfile.ZipFile(tmp_zip) as z:
+                for info in z.infolist():
+                    name = os.path.basename(info.filename)
+                    if name in ("ffmpeg.exe", "ffprobe.exe"):
+                        with z.open(info) as src, open(os.path.join(BIN_DIR, name), "wb") as dst:
+                            dst.write(src.read())
+        except Exception as e:
+            print(f"Couldn't fetch ffmpeg from {url}: {e}")
+        finally:
+            if os.path.isfile(tmp_zip):
+                os.remove(tmp_zip)
+        if os.path.isfile(ffmpeg_dest) and os.path.isfile(ffprobe_dest):
+            return
+    print(f"Couldn't download ffmpeg from any source. "
+          f"Place ffmpeg.exe/ffprobe.exe in {BIN_DIR} manually.")
 
 
 def missing_dependencies():
@@ -1077,6 +1090,7 @@ def main():
         ensure_dependencies(
             on_progress=lambda name: root.after(0, status_var.set, f"Downloading {name}…"))
         missing.extend(missing_dependencies())
+        root.after(0, status_var.set, "Starting…")   # clear the last "Downloading…" line
         done.set()
 
     threading.Thread(target=worker, daemon=True).start()
@@ -1084,13 +1098,19 @@ def main():
     def poll():
         if done.is_set():
             if missing:
-                # Auto-download failed (offline, blocked, ...). Warn and keep
-                # going - downloads will error per-task until the tools exist.
+                # Auto-download of some tools failed (host down, offline,
+                # blocked, ...). Warn about exactly which ones and keep going:
+                # the app still runs, and downloads needing a missing tool
+                # error per-task rather than the whole app refusing to start.
                 messagebox.showwarning(
                     "TraceDownloader",
-                    "Missing tools: " + ", ".join(missing)
-                    + f"\nCouldn't download them automatically.\n"
-                      f"Place them in {BIN_DIR} (or on PATH) and restart.",
+                    "These tools couldn't be downloaded automatically:\n"
+                    f"  {', '.join(missing)}\n\n"
+                    f"The app will still open, but downloads that need them "
+                    f"will fail until they're available.\n"
+                    f"Put the missing .exe files in:\n  {BIN_DIR}\n"
+                    f"(or anywhere on PATH), then restart. "
+                    f"You can also just retry — a slow host often works next time.",
                     parent=root)
             _build_main_app(root)
         else:
