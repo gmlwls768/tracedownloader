@@ -43,7 +43,7 @@ class _SettingsMixin:
                 except OSError:
                     updated_at = None
             info[name] = {
-                "version": self._tool_version(bin_path),
+                "version": self._tool_version_cached(bin_path),
                 "updated_at": updated_at,
                 "github": TOOL_REPO_URLS[name],
             }

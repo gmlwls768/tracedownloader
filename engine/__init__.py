@@ -99,6 +99,10 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
 
         self._closing = threading.Event()
 
+        # Tool version cache for the Settings screen: path -> (mtime, version).
+        # Warmed in the background below so the first Settings open is instant.
+        self._tool_ver_cache = {}
+
         # ── change notification: version counter + condition ──
         self.version   = 0
         self._ver_cond = threading.Condition()
@@ -126,6 +130,7 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
         threading.Thread(target=self._filepath_backfill_worker, daemon=True).start()
         threading.Thread(target=self._update_check_loop, daemon=True).start()
         threading.Thread(target=self._auto_recheck_loop, daemon=True).start()
+        threading.Thread(target=self._warm_tool_versions, daemon=True).start()
 
         if self._cfg_autostart:
             threading.Timer(0.6, self._start_all).start()

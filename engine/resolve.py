@@ -204,11 +204,11 @@ class _ResolveMixin:
                 # same split-coverage situation the ephemeral path handles.
                 g_cookies = self._cookies_tempcopy()
                 try:
-                    meta = self._gallerydl_probe(group.url, g_cookies)
+                    meta, listing = self._gallerydl_probe(group.url, g_cookies)
                 finally:
                     self._cleanup_cookies_tmp(g_cookies)
                 if meta is not None:
-                    self._setup_gallery_group(group, meta)
+                    self._setup_gallery_group(group, meta, listing=listing)
                 else:
                     self._set_group_state(group, "error", M("resolve_error", reason=str(e)))
             return
@@ -335,14 +335,18 @@ class _ResolveMixin:
         except OSError as e:
             print(f"[archive] {e}")
 
-    def _setup_gallery_group(self, group, meta=None):
+    def _setup_gallery_group(self, group, meta=None, listing=False):
         """Persistent tracking for URLs only gallery-dl understands (artist
         pages, galleries). One child task stands for the whole URL and is
         downloaded by gallery-dl with a shared --download-archive, so a
         re-check simply runs the same command again and only newly added
         files actually transfer."""
         title = ""
-        if meta:
+        if meta and listing:
+            # Listing pages (artist/tag/search) carry no gallery fields —
+            # the search tag is the most recognizable name they offer.
+            title = str(meta.get("search_tags") or "").strip()
+        elif meta:
             artist, gtitle, gid = _gallery_meta_fields(meta)
             title = self._format_gallery_name(artist, gtitle, gid)
         with self.lock:

@@ -19,6 +19,27 @@ class _UpdaterMixin:
         except Exception:
             return None
 
+    def _tool_version_cached(self, path):
+        """Version lookup for the Settings screen. Running "--version" on the
+        packaged Windows tools takes seconds each (PyInstaller startup), which
+        made opening Settings visibly hang - so the result is cached against
+        the binary's mtime and only re-read after the file actually changes
+        (i.e. after an update). Warmed in the background at startup."""
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            mtime = None
+        hit = self._tool_ver_cache.get(path)
+        if hit and hit[0] == mtime:
+            return hit[1]
+        version = self._tool_version(path)
+        self._tool_ver_cache[path] = (mtime, version)
+        return version
+
+    def _warm_tool_versions(self):
+        for path in (YTDLP_BIN, GALLERYDL_BIN):
+            self._tool_version_cached(path)
+
     def _update_tool_binary(self, name, url):
         """Download the latest build of `name` over our own managed copy.
         Returns "updated"/"latest"/"failed", or None if we don't manage

@@ -34,8 +34,13 @@ class _EphemeralMixin:
         threading.Thread(target=self._run_ephemeral_auto, args=(entry, url), daemon=True).start()
 
     def _gallerydl_probe(self, url, cookies_tmp):
-        """Run `gallery-dl -j <url>` and return its metadata dict, or None if
-        gallery-dl has no extractor for this URL."""
+        """Run `gallery-dl -j <url>` and classify the result.
+        Returns (meta, is_listing). meta is the first informative metadata
+        dict, or None when gallery-dl has no extractor for the URL at all.
+        is_listing is True for listing pages (artist/tag/search) whose
+        entries queue further galleries (message type 6) instead of files
+        (types 2/3) - those download with gallery-dl's own per-gallery
+        folder layout rather than a single named folder."""
         cmd = [GALLERYDL_BIN, "-j", url]
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]
@@ -44,11 +49,18 @@ class _EphemeralMixin:
                                           timeout=120, creationflags=SUBPROC_FLAGS)
             data = json.loads(out)
         except Exception:
-            return None
+            return None, False
+        listing_meta = None
         for e in data:
-            if isinstance(e, list) and len(e) >= 2 and e[0] in (2, 3) and isinstance(e[-1], dict):
-                return e[-1]
-        return None
+            if not (isinstance(e, list) and len(e) >= 2):
+                continue
+            if e[0] in (2, 3) and isinstance(e[-1], dict):
+                return e[-1], False
+            if e[0] == 6 and listing_meta is None:
+                listing_meta = e[-1] if isinstance(e[-1], dict) else {}
+        if listing_meta is not None:
+            return listing_meta, True
+        return None, False
 
     def _run_ephemeral_auto(self, entry, url):
         """Decide video vs. gallery per URL instead of a site whitelist: ask
@@ -81,12 +93,12 @@ class _EphemeralMixin:
 
         gallery_cookies = self._cookies_tempcopy()
         try:
-            meta = self._gallerydl_probe(url, gallery_cookies)
+            meta, listing = self._gallerydl_probe(url, gallery_cookies)
         finally:
             self._cleanup_cookies_tmp(gallery_cookies)
         if meta is not None:
             entry["kind"] = "gallery"
-            self._run_gallery_download(entry, url, meta)
+            self._run_gallery_download(entry, url, meta, listing=listing)
             return
 
         # Neither tool could do anything with it. Surface yt-dlp's own
@@ -96,33 +108,40 @@ class _EphemeralMixin:
         tail = probe_err.strip().splitlines()[-1][:150] if probe_err.strip() else ""
         self._ephemeral_update(entry, state="error", message=M("url_unsupported", reason=tail))
 
-    def _run_gallery_download(self, entry, url, meta):
-        artist_str, title, gid = _gallery_meta_fields(meta)
-        folder_name = self._format_gallery_name(artist_str, title, gid)
-        count = meta.get("count")
+    def _run_gallery_download(self, entry, url, meta, listing=False):
         out_dir = self._gallery_output_dir(url)
+        if listing:
+            # A listing page (artist/tag/search) fans out into many child
+            # galleries - keep gallery-dl's own per-gallery folder layout
+            # instead of forcing everything into one named folder.
+            folder_name = str(meta.get("search_tags") or "").strip() or url
+            target_dir = out_dir
+        else:
+            artist_str, title, gid = _gallery_meta_fields(meta)
+            folder_name = self._format_gallery_name(artist_str, title, gid)
+            target_dir = os.path.join(out_dir, folder_name)
 
-        # Self dedup — some network filesystems don't reliably honor
-        # gallery-dl's own built-in skip, so treat an existing non-empty
-        # folder as "already downloaded" and don't touch it again.
-        target_dir = os.path.join(out_dir, folder_name)
-        try:
-            already = os.path.isdir(target_dir) and bool(os.listdir(target_dir))
-        except OSError:
-            already = False
-        if already:
-            self._ephemeral_update(entry, title=folder_name, state="completed",
-                                    message=M("gallery_already_exists", path=target_dir))
-            return
+            # Self dedup — some network filesystems don't reliably honor
+            # gallery-dl's own built-in skip, so treat an existing non-empty
+            # folder as "already downloaded" and don't touch it again.
+            try:
+                already = os.path.isdir(target_dir) and bool(os.listdir(target_dir))
+            except OSError:
+                already = False
+            if already:
+                self._ephemeral_update(entry, title=folder_name, state="completed",
+                                        message=M("gallery_already_exists", path=target_dir))
+                return
 
+        count = meta.get("count")
         self._ephemeral_update(
             entry, title=folder_name, state="downloading",
             message=M("gallery_downloading_count", count=count) if count else M("gallery_downloading"))
 
         cookies_tmp = self._cookies_tempcopy()
-        cmd = [GALLERYDL_BIN,
-               "-o", f"base-directory={out_dir}",
-               "-o", f'directory=["{folder_name}"]']
+        cmd = [GALLERYDL_BIN, "-o", f"base-directory={out_dir}"]
+        if not listing:
+            cmd += ["-o", f'directory=["{folder_name}"]']
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]
         cmd.append(url)
