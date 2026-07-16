@@ -182,7 +182,8 @@ class _ResolveMixin:
         cmd.append(group.url)
         try:
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                  text=True, timeout=600)
+                                  text=True, timeout=600,
+                                  creationflags=SUBPROC_FLAGS)
             if proc.returncode != 0:
                 tail = (proc.stderr or "").strip().splitlines()
                 raise RuntimeError(tail[-1][:200] if tail else f"exit code {proc.returncode}")

@@ -25,7 +25,7 @@ class _MaintenanceMixin:
                 [FFPROBE_BIN, "-v", "error", "-select_streams", "v:0",
                  "-show_entries", "stream=width,height", "-of", "csv=p=0", filepath],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=15)
+                timeout=15, creationflags=SUBPROC_FLAGS)
             line = r.stdout.strip().splitlines()[0] if r.stdout.strip() else ""
             parts = [p for p in line.split(",") if p.strip().isdigit()]
             if len(parts) >= 2:

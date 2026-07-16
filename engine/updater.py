@@ -14,7 +14,8 @@ class _UpdaterMixin:
     def _tool_version(path):
         try:
             return subprocess.run([path, "--version"], capture_output=True,
-                                  text=True, timeout=15).stdout.strip()
+                                  text=True, timeout=15,
+                                  creationflags=SUBPROC_FLAGS).stdout.strip()
         except Exception:
             return None
 
@@ -58,7 +59,8 @@ class _UpdaterMixin:
             return "failed"
         try:
             subprocess.run([pip, "install", "-q", "--upgrade", pkg],
-                          check=True, timeout=180, capture_output=True, text=True)
+                          check=True, timeout=180, capture_output=True, text=True,
+                          creationflags=SUBPROC_FLAGS)
         except Exception as e:
             print(f"[update] {name} pip fallback failed: {e}")
             return "failed"

@@ -40,7 +40,8 @@ class _EphemeralMixin:
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]
         try:
-            out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, timeout=120)
+            out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL,
+                                          timeout=120, creationflags=SUBPROC_FLAGS)
             data = json.loads(out)
         except Exception:
             return None
@@ -65,7 +66,7 @@ class _EphemeralMixin:
         probe_ok, probe_err = False, ""
         try:
             proc = subprocess.run(probe_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                  text=True, timeout=60)
+                                  text=True, timeout=60, creationflags=SUBPROC_FLAGS)
             probe_ok = proc.returncode == 0
             if not probe_ok:
                 probe_err = (proc.stderr or "").strip()
@@ -127,7 +128,7 @@ class _EphemeralMixin:
         cmd.append(url)
         try:
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                  text=True, timeout=3600)
+                                  text=True, timeout=3600, creationflags=SUBPROC_FLAGS)
         except Exception as e:
             self._ephemeral_update(entry, state="error", message=M("download_exception", error=str(e)))
             return
@@ -153,7 +154,7 @@ class _EphemeralMixin:
         cmd.append(url)
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    text=True, bufsize=1)
+                                    text=True, bufsize=1, creationflags=SUBPROC_FLAGS)
         except FileNotFoundError:
             self._cleanup_cookies_tmp(cookies_tmp)
             self._ephemeral_update(entry, state="error", message=M("binary_not_found", tool=YTDLP_BIN))

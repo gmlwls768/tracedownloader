@@ -113,6 +113,12 @@ DEFAULT_GALLERY_TEMPLATE = "[{artist}] {title} ({id})"
 ILLEGAL_FS_CHARS_RE = re.compile(r'[\\/:*?"<>|]')
 GENERIC_URL_RE = re.compile(r'https?://\S+', re.IGNORECASE)
 
+# yt-dlp/gallery-dl/ffprobe are console executables: launched from the
+# windowed (no-console) Windows build, each call would flash a black
+# console window on screen. Passed as creationflags to every tool
+# subprocess; 0 elsewhere, where the flag has no meaning.
+SUBPROC_FLAGS = 0x08000000 if os.name == "nt" else 0   # CREATE_NO_WINDOW
+
 
 def M(key, **params):
     """Build a localizable status message. The client looks `key` up in its
@@ -596,6 +602,7 @@ __all__ = [
     "PART_FILE_RE",
     "PROGRESS_LINE_RE",
     "RES_FILE_ID_RE",
+    "SUBPROC_FLAGS",
     "TOOL_PIP_NAMES",
     "TOOL_REPO_URLS",
     "TOOL_UPDATE_INTERVAL",

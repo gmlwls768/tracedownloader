@@ -254,7 +254,8 @@ class _QueueMixin:
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
-                                    text=True, bufsize=1)
+                                    text=True, bufsize=1,
+                                    creationflags=SUBPROC_FLAGS)
         except FileNotFoundError:
             self._cleanup_cookies_tmp(cookies_tmp)
             self._set_video_state(task, "error", M("binary_not_found", tool=YTDLP_BIN))
@@ -363,7 +364,8 @@ class _QueueMixin:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
                                     text=True, bufsize=1,
-                                    env={**os.environ, "PYTHONUNBUFFERED": "1"})
+                                    env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                                    creationflags=SUBPROC_FLAGS)
         except FileNotFoundError:
             self._cleanup_cookies_tmp(cookies_tmp)
             self._set_video_state(task, "error", M("binary_not_found", tool=GALLERYDL_BIN))
