@@ -13,6 +13,7 @@ class _SettingsMixin:
     def get_settings(self):
         return {
             "app_version":          APP_VERSION,
+            "app_repo":             APP_REPO_URL,
             "autostart":            self._cfg_autostart,
             "max_concurrent":       self._cfg_max_concurrent,
             "autosave_minutes":     self._cfg_autosave_min,
@@ -34,7 +35,8 @@ class _SettingsMixin:
 
     def _tool_info(self):
         info = {}
-        for name, bin_path in (("yt-dlp", YTDLP_BIN), ("gallery-dl", GALLERYDL_BIN)):
+        for name, bin_path in (("yt-dlp", YTDLP_BIN), ("gallery-dl", GALLERYDL_BIN),
+                               ("ffmpeg", FFMPEG_BIN)):
             updated_at = self.db.get_meta(f"{name}_updated_at", "")
             if not updated_at:
                 try:
@@ -46,6 +48,9 @@ class _SettingsMixin:
                 "version": self._tool_version_cached(bin_path),
                 "updated_at": updated_at,
                 "github": TOOL_REPO_URLS[name],
+                # ffmpeg from PATH (apt/system) isn't ours to auto-update;
+                # the UI shows it as read-only in that case.
+                "managed": os.path.isfile(_managed_bin_path(name)),
             }
         return info
 

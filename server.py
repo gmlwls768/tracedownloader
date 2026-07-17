@@ -216,9 +216,17 @@ def set_settings(body: dict):
 
 @app.post("/api/check_updates")
 def check_updates():
-    """Manual "check now" for yt-dlp/gallery-dl (also runs on its own on a
-    timer - see engine._update_check_loop)."""
+    """Manual "check now" for yt-dlp/gallery-dl/ffmpeg (also runs on its own
+    on a timer - see engine._update_check_loop)."""
     return engine.check_tool_updates()
+
+
+@app.post("/api/check_app_update")
+def check_app_update():
+    """Is there a newer TraceDownloader release? Returns version info; the
+    web server updates itself with `git pull` (deploy/update.sh), so this is
+    informational."""
+    return engine.check_app_update()
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ Two front ends share the same engine:
   Linux, other platforms run it from source).
 
 ![state](https://img.shields.io/badge/status-active-brightgreen)
-![version](https://img.shields.io/badge/version-1.0.3-blue)
+![version](https://img.shields.io/badge/version-1.1.0-blue)
 
 ![Windows app — Active tab with an expanded playlist group](docs/windows-active.png)
 
@@ -148,12 +148,17 @@ folder next to `engine/`, or have them on your `PATH`.
 | Gallery folder name format | Template for gallery folder names, e.g. `[{artist}] {title} ({id})` |
 | Cookies | A cookies.txt (Netscape format), sent to both yt-dlp and gallery-dl |
 | Resolution / size thresholds | Used by the "check resolution" / "check size" maintenance tools |
-| Keep tools updated automatically | Periodic yt-dlp/gallery-dl auto-update, plus a manual "check now" |
+| Keep tools updated automatically | Periodic yt-dlp/gallery-dl/ffmpeg auto-update, plus a manual "check now" |
 | Language | English or Korean |
 
-> The download tools (yt-dlp / gallery-dl) keep themselves current — that's
-> what "keep tools updated automatically" covers. Updating **TraceDownloader
-> itself** is separate; see below.
+Settings also shows each tool's version and source (yt-dlp, gallery-dl,
+ffmpeg — a system/apt ffmpeg is shown as read-only), the app's own version
+with a **"Check for app updates"** button, and a link to this repo.
+
+> The download tools (yt-dlp / gallery-dl / ffmpeg) keep themselves current
+> — that's what "keep tools updated automatically" covers (ffmpeg only when
+> the app manages its own copy, i.e. the Windows build; a system ffmpeg is
+> left to the OS). Updating **TraceDownloader itself** is separate; see below.
 
 ## Updating
 

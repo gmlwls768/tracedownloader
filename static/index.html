@@ -1030,11 +1030,13 @@ async function openSettings() {
     <div class="frow"><label><input type="checkbox" id="s-hp" ${s.high_progress_first ? 'checked' : ''}> ${esc(t('s_hp_first'))}</label></div>
     <div class="frow"><label><input type="checkbox" id="s-autoupdate" ${s.auto_update_tools ? 'checked' : ''}> ${esc(t('s_auto_update'))}</label>
       <button type="button" onclick="checkToolUpdatesNow()">${esc(t('s_check_updates_now'))}</button></div>
-    <div class="frow"><label>${esc(t('s_app_version'))}</label><span>TraceDownloader v${esc(s.app_version || '')}</span></div>
+    <div class="frow"><label>${esc(t('s_app_version'))}</label>
+      <span>TraceDownloader v${esc(s.app_version || '')} — <a href="${esc((s.app_repo||'') )}" target="_blank" rel="noopener noreferrer">GitHub ↗</a></span>
+      <button type="button" style="margin-left:8px" onclick="checkAppUpdateNow()">${esc(t('s_app_check_update'))}</button></div>
     <div class="frow" style="align-items:flex-start"><label style="padding-top:2px">${esc(t('s_tool_versions'))}</label>
       <div style="line-height:1.7">${Object.entries(s.tools || {}).map(([name, info]) => `
         <div>${esc(name)} <b>${esc(info.version || '?')}</b>${info.updated_at
-          ? ` <span class="hint" style="margin:0">(${esc(t('s_tool_updated_at', { date: info.updated_at.slice(0, 10) }))})</span>` : ''}
+          ? ` <span class="hint" style="margin:0">(${esc(info.managed === false ? t('s_tool_system') : t('s_tool_updated_at', { date: info.updated_at.slice(0, 10) }))})</span>` : ''}
           — <a href="${esc(info.github)}" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>`).join('')}</div></div>
     <div class="frow"><label>${esc(t('s_font'))}</label><select id="s-font">
       <option value="4" ${s.font_scale == 4 ? 'selected' : ''}>${esc(t('font_xs'))}</option>
@@ -1095,6 +1097,13 @@ function applyFont(scale) {
 }
 async function checkToolUpdatesNow() {
   await api('/api/check_updates');
+}
+async function checkAppUpdateNow() {
+  const r = await api('/api/check_app_update');
+  if (!r) { toast(t('app_update_failed')); return; }
+  if (r.newer) toast(t('app_update_available', { latest: r.latest, current: r.current }));
+  else if (r.latest) toast(t('app_update_latest', { current: r.current }));
+  else toast(t('app_update_failed'));
 }
 
 // ───────── init ─────────

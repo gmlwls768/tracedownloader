@@ -240,18 +240,20 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
             return base
         return os.path.join(base, "gallery")
 
-    def _gallery_dirfmt(self, url):
+    def _gallery_dirfmt(self, url=""):
         """The user's gallery folder template, translated to gallery-dl's
-        format-string syntax so listing downloads (artist/tag pages) can
-        name every child gallery the same way the single-gallery path does.
-        Only for sites known to carry the matching fields — None otherwise
-        (gallery-dl's default per-site layout)."""
-        if not any(s in (url or "").lower() for s in GALLERY_TEMPLATE_SITES):
-            return None
+        format-string syntax so listing downloads (artist/tag pages) name
+        every child gallery the same way the single-gallery path does.
+
+        Field-driven, not site-driven: the placeholders map to whichever of
+        several common gallery-dl field names is present, each with an empty
+        fallback so a missing field yields "" rather than the literal
+        "None"/"Unknown". A site whose galleries lack these fields simply
+        gets emptier names — nothing site-specific is hardcoded."""
         tpl = self._cfg_gallery_template or DEFAULT_GALLERY_TEMPLATE
         return (tpl.replace("{artist}", "{artist|tags_artist|group|uploader:J, }")
-                   .replace("{title}", "{title|title_jpn}")
-                   .replace("{id}", "{gallery_id|gid|id}"))
+                   .replace("{title}", "{title|title_jpn|'untitled'}")
+                   .replace("{id}", "{gallery_id|gid|id|''}"))
 
     def _format_gallery_name(self, artist, title, gid):
         tpl = self._cfg_gallery_template or DEFAULT_GALLERY_TEMPLATE

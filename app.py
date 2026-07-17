@@ -971,14 +971,23 @@ class App:
                   command=lambda: self.check_tool_updates_now()).pack(side="left", padx=(10, 0))
         add("", autoupdate_frame)
 
-        add(t("s_app_version"), ttk.Label(frm, text=f'TraceDownloader v{s.get("app_version", "")}'))
+        app_frame = ttk.Frame(frm)
+        ttk.Label(app_frame, text=f'TraceDownloader v{s.get("app_version", "")}').pack(side="left")
+        app_link = ttk.Label(app_frame, text=" GitHub ↗", foreground="#4a9eff", cursor="hand2")
+        app_link.pack(side="left")
+        app_link.bind("<Button-1>", lambda e, url=s.get("app_repo"): webbrowser.open(url) if url else None)
+        ttk.Button(app_frame, text=t("s_app_check_update"),
+                   command=self.check_app_update_now).pack(side="left", padx=(10, 0))
+        add(t("s_app_version"), app_frame)
 
         tools_frame = ttk.Frame(frm)
         for name, info in s.get("tools", {}).items():
             row_frame = ttk.Frame(tools_frame)
             row_frame.pack(anchor="w", pady=1)
             version_text = f'{name} {info.get("version") or "?"}'
-            if info.get("updated_at"):
+            if info.get("managed") is False:
+                version_text += f' ({t("s_tool_system")})'
+            elif info.get("updated_at"):
                 version_text += f' ({t("s_tool_updated_at", date=info["updated_at"][:10])})'
             ttk.Label(row_frame, text=version_text).pack(side="left")
             link = ttk.Label(row_frame, text=" GitHub ↗", foreground="#4a9eff", cursor="hand2")
@@ -1086,6 +1095,18 @@ class App:
 
     def check_tool_updates_now(self):
         threading.Thread(target=self.engine.check_tool_updates, daemon=True).start()
+
+    def check_app_update_now(self):
+        def worker():
+            r = self.engine.check_app_update()
+            if r.get("newer"):
+                msg = self.t("app_update_available", latest=r["latest"], current=r["current"])
+            elif r.get("latest"):
+                msg = self.t("app_update_latest", current=r["current"])
+            else:
+                msg = self.t("app_update_failed")
+            self.root.after(0, self.show_toast, msg)
+        threading.Thread(target=worker, daemon=True).start()
 
 
 def _build_main_app(root):

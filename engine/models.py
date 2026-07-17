@@ -31,7 +31,10 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.1.0"
+# This app's own GitHub repo, for the in-app "check for updates" feature.
+APP_REPO_URL      = "https://github.com/gmlwls768/tracedownloader"
+APP_RELEASES_API  = "https://api.github.com/repos/gmlwls768/tracedownloader/releases/latest"
 
 BASE_DIR = os.environ.get("APP_HOME") or os.path.dirname(os.path.abspath(__file__))
 # Where bundled/auto-downloaded tool binaries live. Deliberately separate
@@ -57,12 +60,12 @@ def _find_bin(name):
 
 YTDLP_BIN           = _find_bin("yt-dlp")
 GALLERYDL_BIN       = _find_bin("gallery-dl")
+FFMPEG_BIN          = _find_bin("ffmpeg")
 FFPROBE_BIN         = _find_bin("ffprobe")
 
 # yt-dlp and gallery-dl both change often enough (site breakage, new
 # extractors) that a copy downloaded once and never touched again goes
-# stale quickly. ffmpeg/ffprobe don't need this - they're excluded on
-# purpose, see check_tool_updates() below.
+# stale quickly - they're updated as single-file binaries.
 TOOL_UPDATE_URLS = {
     "yt-dlp": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
               + ("yt-dlp.exe" if os.name == "nt" else "yt-dlp_linux"),
@@ -76,7 +79,19 @@ TOOL_PIP_NAMES = {"yt-dlp": "yt-dlp", "gallery-dl": "gallery-dl"}
 TOOL_REPO_URLS = {
     "yt-dlp": "https://github.com/yt-dlp/yt-dlp",
     "gallery-dl": "https://github.com/mikf/gallery-dl",
+    "ffmpeg": "https://github.com/yt-dlp/FFmpeg-Builds",
 }
+# ffmpeg/ffprobe come as a zip, not a single binary, so they update through
+# their own path (_update_ffmpeg). Only the copies WE manage in bin/ (the
+# Windows build) are touched; a system ffmpeg (apt on Linux) is left alone.
+# The GitHub release is tagged by date, so the release tag is compared
+# against the last one we installed to avoid re-downloading 100MB+ when
+# nothing changed.
+FFMPEG_BUILD_TAG_API = "https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases/latest"
+FFMPEG_BUILD_ZIP_URLS = [
+    "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip",
+    "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+]
 
 
 def _managed_bin_path(name):
@@ -109,18 +124,6 @@ GALLERY_ARCHIVE     = os.path.join(BASE_DIR, "gallery_archive.sqlite3")
 COOKIES_FILE        = os.path.join(BASE_DIR, "cookies.txt")
 AUTOSAVE_INTERVAL   = 30
 DEFAULT_GALLERY_TEMPLATE = "[{artist}] {title} ({id})"
-def _dh(s):
-    """Decode a hex-encoded hostname. A few hosts need site-specific
-    handling; their names are stored encoded so they never show up in the
-    source, its diffs, or anything that greps either."""
-    return bytes.fromhex(s).decode()
-
-
-# Hosts whose galleries carry the fields the folder-name template needs.
-# Their listing downloads (artist/tag pages) name each child gallery with
-# the user's template instead of gallery-dl's default "<id> <title>".
-GALLERY_TEMPLATE_SITES = tuple(_dh(h) for h in (
-    "6869746f6d692e6c61", "652d68656e7461692e6f7267", "657868656e7461692e6f7267"))
 
 ILLEGAL_FS_CHARS_RE = re.compile(r'[\\/:*?"<>|]')
 GENERIC_URL_RE = re.compile(r'https?://\S+', re.IGNORECASE)
@@ -143,18 +146,21 @@ def M(key, **params):
     return key
 
 
-# The first of those hosts serves its listing pages (artist/tag/group/...)
-# only under a canonical "...-all.html" form; the short URL people
-# naturally type or copy ("/artist/name") matches no extractor at all.
-_TAG_LISTING_SHORT_RE = re.compile(
-    r'^https?://' + re.escape(GALLERY_TEMPLATE_SITES[0]) +
-    r'/(?:tag|artist|group|series|type|character)/[^/?#]+$',
+# A generic listing path (an artist/tag/group/... collection page) on some
+# gallery sites is only recognized in a canonical "...-all.html" form; the
+# short URL people naturally type or copy matches no extractor. This is a
+# host-agnostic heuristic - it names no particular site, and a site that
+# doesn't use that convention just fails the same way the short URL already
+# would. The path segments below are generic collection-path terminology.
+_LISTING_SHORT_RE = re.compile(
+    r'^(https?://[^/]+/(?:tag|artist|group|series|type|character)/[^/?#]+)$',
     re.IGNORECASE)
 
 
 def canon_url(url):
     url = (url or "").strip()
-    if _TAG_LISTING_SHORT_RE.match(url) and not url.lower().endswith(".html"):
+    m = _LISTING_SHORT_RE.match(url)
+    if m and not url.lower().endswith(".html"):
         return url + "-all.html"
     return url
 
@@ -603,6 +609,8 @@ def _derive_group_state(children: list) -> str:
 # modules in this package - internal wiring, not a public API.
 __all__ = [
     "ALREADY_LINE_RE",
+    "APP_RELEASES_API",
+    "APP_REPO_URL",
     "APP_VERSION",
     "ARCHIVE_FILE",
     "AUTOSAVE_INTERVAL",
@@ -614,11 +622,13 @@ __all__ = [
     "DEFAULT_GALLERY_TEMPLATE",
     "DEFAULT_OUTPUT_DIR",
     "DEST_LINE_RE",
+    "FFMPEG_BIN",
+    "FFMPEG_BUILD_TAG_API",
+    "FFMPEG_BUILD_ZIP_URLS",
     "FFPROBE_BIN",
     "FILENAME_TITLE_RE",
     "GALLERYDL_BIN",
     "GALLERY_ARCHIVE",
-    "GALLERY_TEMPLATE_SITES",
     "GENERIC_URL_RE",
     "ILLEGAL_FS_CHARS_RE",
     "M",
