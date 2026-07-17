@@ -14,7 +14,7 @@ Two front ends share the same engine:
   Linux, other platforms run it from source).
 
 ![state](https://img.shields.io/badge/status-active-brightgreen)
-![version](https://img.shields.io/badge/version-1.0.2-blue)
+![version](https://img.shields.io/badge/version-1.0.3-blue)
 
 ![Windows app — Active tab with an expanded playlist group](docs/windows-active.png)
 
@@ -150,6 +150,26 @@ folder next to `engine/`, or have them on your `PATH`.
 | Resolution / size thresholds | Used by the "check resolution" / "check size" maintenance tools |
 | Keep tools updated automatically | Periodic yt-dlp/gallery-dl auto-update, plus a manual "check now" |
 | Language | English or Korean |
+
+> The download tools (yt-dlp / gallery-dl) keep themselves current — that's
+> what "keep tools updated automatically" covers. Updating **TraceDownloader
+> itself** is separate; see below.
+
+## Updating
+
+- **Windows**: download the newest `tracedownloader.exe` from
+  [Releases](../../releases) and replace the old one. Your `data/`, `bin/`,
+  and downloads sit next to the .exe and are left alone.
+- **Web server**: from the checkout, `bash deploy/update.sh` — it pulls the
+  latest code, refreshes the venv if dependencies changed, and restarts the
+  systemd service (your database, cookies, and downloads are untouched).
+  The equivalent by hand:
+
+  ```bash
+  cd /path/to/tracedownloader
+  git pull
+  systemctl restart tracedownloader    # or re-run the uvicorn command
+  ```
 
 ## Desktop helper for the web server version (optional)
 
@@ -366,6 +386,24 @@ Windows/macOS에서도 같은 서버를 소스로 실행할 수 있습니다 —
 | 해상도/용량 기준 | "해상도 검사"/"용량 검사" 도구가 사용하는 기준값 |
 | 자동 업데이트 | yt-dlp/gallery-dl 주기적 자동 업데이트 + 수동 "지금 확인" |
 | 언어 | 영어 또는 한국어 |
+
+> 다운로드 도구(yt-dlp / gallery-dl)는 스스로 최신으로 유지됩니다("도구 자동
+> 업데이트"). **TraceDownloader 앱 자체** 업데이트는 별개이며 아래를 참고하세요.
+
+## 업데이트
+
+- **Windows**: [Releases](../../releases)에서 최신 `tracedownloader.exe`를 받아
+  기존 파일을 교체하면 됩니다. `data/`·`bin/`·다운로드 폴더는 exe 옆에 있어
+  그대로 유지됩니다.
+- **웹서버**: 체크아웃 폴더에서 `bash deploy/update.sh` — 최신 코드를 pull하고,
+  의존성이 바뀌었으면 venv를 갱신한 뒤 systemd 서비스를 재시작합니다(DB·쿠키·
+  다운로드는 건드리지 않음). 수동으로 하려면:
+
+  ```bash
+  cd /path/to/tracedownloader
+  git pull
+  systemctl restart tracedownloader    # 또는 uvicorn 명령 재실행
+  ```
 
 ## 데스크톱 헬퍼 (웹서버 버전용, 선택)
 

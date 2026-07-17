@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 BASE_DIR = os.environ.get("APP_HOME") or os.path.dirname(os.path.abspath(__file__))
 # Where bundled/auto-downloaded tool binaries live. Deliberately separate
