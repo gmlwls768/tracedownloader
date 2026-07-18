@@ -162,6 +162,7 @@ class _ResolveMixin:
                     group.last_message = M("resolve_error", reason=str(e))
                 self._request_refresh()
             finally:
+                self._recheck_batch_tick(group)
                 self._resolve_queue.task_done()
 
     def _start_resolve_workers(self, max_concurrent: int):
@@ -383,9 +384,11 @@ class _ResolveMixin:
     def _recheck_group(self, group):
         with self.lock:
             if group.state == "resolving":
-                return  # already re-checking - queuing again could duplicate videos
+                return False  # already re-checking - queuing again could duplicate videos
             group.state = "resolving"
+            group.new_count = 0   # recount from this resolve (batch summary reads it)
             group.last_message = M("rechecking")
             group.modified_at = time.time()
         self._request_refresh()
         self._resolve_queue.put(group)
+        return True

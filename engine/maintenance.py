@@ -121,6 +121,7 @@ class _MaintenanceMixin:
                    if missing else M("res_check_summary", total=total, redownload=len(low)))
         self._set_done_status(summary)
         self._show_toast(summary)
+        self._schedule_done_status_clear(summary)
 
     def _apply_res_redownload(self, low, msg=None):
         """Reset below-threshold videos for re-download (clears archive/history,
@@ -238,6 +239,7 @@ class _MaintenanceMixin:
                    M("size_check_summary", total=total, redownload=len(low), threshold_mb=threshold_mb))
         self._set_done_status(summary)
         self._show_toast(summary)
+        self._schedule_done_status_clear(summary)
 
     def missing_check(self, ids=None):
         """Find completed/skipped videos whose file is missing from the output
@@ -559,13 +561,53 @@ class _MaintenanceMixin:
         if not targets:
             self._set_done_status(M("no_done_groups"))
             return
+        # Each group is re-resolved on the shared resolve queue; the workers
+        # report back via _recheck_batch_tick, which advances this live counter
+        # and swaps in a summary once every group is done.
+        with self._recheck_batch_lock:
+            self._recheck_batch = {"ids": {g.id for g in targets},
+                                   "total": len(targets), "done": 0,
+                                   "new": 0, "excluded": excluded}
+        self._set_done_status(M("bulk_recheck_progress", done=0, total=len(targets)))
         for g in targets:
-            self._recheck_group(g)
-        if excluded:
-            self._set_done_status(M("bulk_recheck_progress_excluded",
-                                     count=len(targets), excluded=excluded))
+            if not self._recheck_group(g):
+                # Already resolving (rare): it won't be re-queued, so account
+                # for it now or the batch would never reach 100%.
+                self._recheck_batch_tick(g)
+
+    def _recheck_batch_tick(self, group):
+        """A group finished (re-)resolving. If it belongs to the running
+        "re-check all" batch, advance the done-tab progress line; when the last
+        group lands, show a summary that auto-clears."""
+        with self._recheck_batch_lock:
+            b = self._recheck_batch
+            if not b or group.id not in b["ids"]:
+                return
+            b["ids"].discard(group.id)
+            b["done"] += 1
+            b["new"]  += max(0, getattr(group, "new_count", 0) or 0)
+            done, total, new, excluded = b["done"], b["total"], b["new"], b["excluded"]
+            finished = not b["ids"]
+            if finished:
+                self._recheck_batch = None
+        if finished:
+            summary = (M("bulk_recheck_summary_excluded", total=total, new=new, excluded=excluded)
+                       if excluded else M("bulk_recheck_summary", total=total, new=new))
+            self._set_done_status(summary)
+            self._show_toast(summary)
+            self._schedule_done_status_clear(summary)
         else:
-            self._set_done_status(M("bulk_recheck_progress", count=len(targets)))
+            self._set_done_status(M("bulk_recheck_progress", done=done, total=total))
+
+    def _schedule_done_status_clear(self, expected, delay=12):
+        """Wipe the done-tab status line a short while after a bulk op ends, but
+        only if nothing newer has replaced it in the meantime."""
+        def _clear():
+            if self._closing.wait(delay):
+                return
+            if self.done_status == expected:
+                self._set_done_status("")
+        threading.Thread(target=_clear, daemon=True).start()
 
     def _auto_recheck_loop(self):
         """Scheduled bulk re-check: every N days (Settings, 0 = off) run the
@@ -607,6 +649,7 @@ class _MaintenanceMixin:
         summary = M("bulk_retry_summary_excluded", retried=retried, excluded=excluded) if excluded \
                   else M("bulk_retry_summary", retried=retried)
         self._set_done_status(summary)
+        self._schedule_done_status_clear(summary)
 
     def _redownload_all_done(self):
         with self.lock:
@@ -615,9 +658,11 @@ class _MaintenanceMixin:
         if not done_groups:
             self._set_done_status(M("no_done_groups"))
             return
-        self._set_done_status(M("bulk_redownload_progress", count=len(done_groups)))
+        msg = M("bulk_redownload_progress", count=len(done_groups))
+        self._set_done_status(msg)
         for g in done_groups:
             self._fresh_download(g)
+        self._schedule_done_status_clear(msg)
 
     def set_top_priority(self, ids):
         with self.lock:

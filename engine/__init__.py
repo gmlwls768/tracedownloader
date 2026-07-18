@@ -111,6 +111,10 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
         self._toast_seq   = itertools.count(1)
         # status line for done-tab bulk operations (_set_done_status)
         self.done_status  = ""
+        # live progress for the "re-check all" batch (done-tab status line);
+        # None when no bulk re-check is running.
+        self._recheck_batch      = None
+        self._recheck_batch_lock = threading.Lock()
         # pending 2-step delete-with-files confirmations: token -> [files]
         self._pending_deletes = {}
         self._pending_missing = {}
