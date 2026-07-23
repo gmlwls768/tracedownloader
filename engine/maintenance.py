@@ -399,7 +399,13 @@ class _MaintenanceMixin:
         1) filepath recorded in the DB (set at completion / backfilled) — instant
         2) fallback: full scan map (older data, or a file that moved)
         Returns {"base", "rel", "kind"} or None."""
-        base = os.path.abspath(self._cfg_output_dir or DEFAULT_OUTPUT_DIR)
+        base  = os.path.abspath(self._cfg_output_dir or DEFAULT_OUTPUT_DIR)
+        # Resolve symlinks for the containment check: a filepath recorded under
+        # one alias (e.g. /iwara/…) must still match an output_dir given under
+        # another that points into the same share (e.g. /projects). Without this
+        # the fast path is skipped and locate falls back to a full, very slow
+        # tree walk that can time the request out.
+        rbase = os.path.realpath(base)
         with self.lock:
             task = next((t for t in self.tasks if t.id == tid), None)
             if not task:
@@ -413,16 +419,15 @@ class _MaintenanceMixin:
             vids  = [self._extract_vid_id(t) for t in cands]
 
         def _result(fp):
-            if task.kind == "video":
-                return {"base": base, "rel": os.path.relpath(fp, base),
-                        "kind": "file"}
-            return {"base": base,
-                    "rel": os.path.relpath(os.path.dirname(fp), base),
-                    "kind": "dir"}
+            rfp = os.path.realpath(fp)
+            target = rfp if task.kind == "video" else os.path.dirname(rfp)
+            return {"base": rbase, "rel": os.path.relpath(target, rbase),
+                    "kind": "file" if task.kind == "video" else "dir"}
 
         for fp in paths:
             # Skip stale paths (output folder changed, or file was deleted).
-            if fp.startswith(base + os.sep) and os.path.isfile(fp):
+            rfp = os.path.realpath(fp)
+            if rfp.startswith(rbase + os.sep) and os.path.isfile(rfp):
                 return _result(fp)
 
         vids = [v for v in vids if v]
