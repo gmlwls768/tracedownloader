@@ -307,11 +307,29 @@ class _MaintenanceMixin:
         return len(low)
 
     def _extract_vid_id(self, task):
+        """The download-archive key for a video ("<extractor> <id>" -> the id).
+
+        extractor_id is only populated for videos resolved since that column was
+        added; older rows (the bulk of an existing library) have it NULL. Without
+        a valid id here, archive removal is a no-op, so a fresh redownload /
+        resolution / size re-download would find the id still in the archive and
+        get skipped ("has already been recorded"). We recover it from the output
+        filename's "[ID]" bracket (exactly the %(id)s yt-dlp wrote to the archive),
+        then fall back to the URL."""
         if getattr(task, "extractor_id", None):
             return task.extractor_id
+        fp = getattr(task, "filepath", None)
+        if fp:
+            m = FILE_ID_RE.search(os.path.basename(fp))
+            if m:
+                return m.group(1)
         url = task.url or ""
         m = re.search(r'(?:v=|youtu\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})', url)
-        return m.group(1) if m else None
+        if m:
+            return m.group(1)
+        # Last resort: the id is usually the final path segment of the video URL.
+        seg = url.split("?")[0].split("#")[0].rstrip("/").rsplit("/", 1)[-1]
+        return seg or None
 
     def _filepath_backfill_worker(self):
         """One-time backfill for older rows missing `filepath`: a single full

@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.4"
 # This app's own GitHub repo, for the in-app "check for updates" feature.
 APP_REPO_URL      = "https://github.com/gmlwls768/tracedownloader"
 APP_RELEASES_API  = "https://api.github.com/repos/gmlwls768/tracedownloader/releases/latest"
@@ -200,6 +200,9 @@ FILENAME_TITLE_RE = re.compile(r'^\d{4}-\d{2}-\d{2} - (.+?) \[[^\]]+\](?:\.f\d+)
 MERGER_LINE_RE  = re.compile(r'\[Merger\] Merging formats into "(.+)"$')
 PART_FILE_RE    = re.compile(r'\.f\d+\.[^.]+$')
 RES_FILE_ID_RE  = re.compile(r'\[([A-Za-z0-9_-]+)\]\.[^.]+$')
+# Same [ID] bracket, but tolerant of a ".fNNN" fragment suffix — used to pull
+# the archive id back out of a stored filepath when extractor_id is missing.
+FILE_ID_RE      = re.compile(r'\[([A-Za-z0-9_-]+)\](?:\.f\d+)?\.[^.]+$')
 VIDEO_FILE_EXTS = {".mp4", ".mkv", ".webm", ".avi", ".mov"}
 
 UNIT_MULT = {"B":1, "KIB":1024, "MIB":1024**2, "GIB":1024**3, "TIB":1024**4,
@@ -627,6 +630,7 @@ __all__ = [
     "FFMPEG_BUILD_ZIP_URLS",
     "FFPROBE_BIN",
     "FILENAME_TITLE_RE",
+    "FILE_ID_RE",
     "GALLERYDL_BIN",
     "GALLERY_ARCHIVE",
     "GENERIC_URL_RE",
