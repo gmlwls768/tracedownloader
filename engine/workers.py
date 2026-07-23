@@ -350,6 +350,15 @@ class _QueueMixin:
         """A persistent gallery group's single child: the whole URL is handed
         to gallery-dl, whose --download-archive provides per-file dedup, so
         a re-check only fetches newly added items."""
+        # Remember the group's current "last modified" up front. The child cycles
+        # queued->completed on every re-check, which makes _update_group_state bump
+        # modified_at even when nothing new arrived; if new_files stays 0 we restore
+        # this value so a no-op re-check keeps its place in the modified sort.
+        gid = task.parent_group_id
+        with self.lock:
+            grp = next((t for t in self.tasks
+                        if t.id == gid and t.kind == "group"), None)
+            prev_modified = grp.modified_at if grp is not None else None
         self._set_video_state(task, "downloading", M("gallery_downloading"))
         cookies_tmp = self._cookies_tempcopy()
         cmd = [GALLERYDL_BIN,
@@ -419,6 +428,19 @@ class _QueueMixin:
             self._set_video_state(task, "error", _exit_code_msg(proc.returncode, reason))
 
         self._update_group_state(task.parent_group_id)
+        if new_files == 0 and prev_modified is not None:
+            # No new files pulled: undo the modified_at bump from the child's
+            # queued->completed cycle so the group stays put in the modified sort.
+            save_g = None
+            with self.lock:
+                grp = next((t for t in self.tasks
+                            if t.id == gid and t.kind == "group"), None)
+                if grp is not None and grp.modified_at != prev_modified:
+                    grp.modified_at = prev_modified
+                    save_g = grp.to_group_dict()
+            if save_g is not None:
+                try: self.db.upsert_group(save_g)
+                except Exception: pass
         if task.state in ("completed", "error", "paused"):
             try:
                 self.db.upsert_video(task.to_video_dict())

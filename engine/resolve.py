@@ -281,7 +281,10 @@ class _ResolveMixin:
             group.skip_count  = skip_cnt
             group.state       = _derive_group_state(children)
             group.last_message = self._group_progress_message(children)
-            group.modified_at  = time.time()
+            # Only bump "last modified" when genuinely new videos were queued, so a
+            # re-check that finds nothing new keeps its place in the modified sort.
+            if group.new_count > 0:
+                group.modified_at = time.time()
 
         try:
             self.db.save_snapshot([group.to_group_dict()],
@@ -372,7 +375,9 @@ class _ResolveMixin:
             group.completed_count = 1 if child.state in ("completed", "skipped") else 0
             group.state        = _derive_group_state([child])
             group.last_message = self._group_progress_message([child])
-            group.modified_at  = time.time()
+            # modified_at is bumped later in _run_gallery_task, and only when
+            # gallery-dl actually pulls new files - a no-op re-check must not move
+            # the group in the modified sort.
         try:
             self.db.save_snapshot([group.to_group_dict()], [child.to_video_dict()])
         except Exception as e:
@@ -388,7 +393,8 @@ class _ResolveMixin:
             group.state = "resolving"
             group.new_count = 0   # recount from this resolve (batch summary reads it)
             group.last_message = M("rechecking")
-            group.modified_at = time.time()
+            # No modified_at bump here: a re-check only moves the group in the
+            # modified sort if it actually finds new videos (set in _fetch_and_create_inner).
         self._request_refresh()
         self._resolve_queue.put(group)
         return True
