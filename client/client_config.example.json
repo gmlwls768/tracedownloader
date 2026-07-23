@@ -1,0 +1,5 @@
+{
+  "server": "http://127.0.0.1:8686",
+  "win_base": "",
+  "open_port": 8687
+}
