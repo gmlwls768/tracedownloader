@@ -61,7 +61,7 @@ class _MaintenanceMixin:
             return
         base = os.path.abspath(self._cfg_output_dir or DEFAULT_OUTPUT_DIR)
         threshold = self._cfg_res_height
-        self._set_done_status(M("res_check_collecting"))
+        self._set_done_status(M("res_check_collecting", dirs=0))
         threading.Thread(target=self._res_check_worker,
                          args=(targets, base, threshold), daemon=True).start()
 
@@ -72,8 +72,16 @@ class _MaintenanceMixin:
     def _res_check_worker(self, targets, base, threshold):
         # 1) One os.walk pass builds a video-id -> filepath map.
         id_file = {}
+        scanned = 0
         try:
-            for dirpath, _, filenames in os.walk(base):
+            for dirpath, dirnames, filenames in os.walk(base):
+                # Synology metadata/recycle folders hold no real content — skip
+                # them (an @eaDir is one empty dir per file, so on a large NAS
+                # they dominate the walk while yielding nothing).
+                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
+                scanned += 1
+                if scanned % 200 == 0:
+                    self._set_done_status(M("res_check_collecting", dirs=scanned))
                 for fn in filenames:
                     if os.path.splitext(fn)[1].lower() not in VIDEO_FILE_EXTS:
                         continue
@@ -177,15 +185,20 @@ class _MaintenanceMixin:
             return
         base = os.path.abspath(self._cfg_output_dir or DEFAULT_OUTPUT_DIR)
         threshold = self._cfg_size_mb * 1024 * 1024
-        self._set_done_status(M("size_check_collecting"))
+        self._set_done_status(M("size_check_collecting", dirs=0))
         threading.Thread(target=self._size_check_worker,
                          args=(targets, base, threshold), daemon=True).start()
 
     def _size_check_worker(self, targets, base, threshold):
         # 1) One os.walk pass builds a video-id -> filepath map (same as res_check).
         id_file = {}
+        scanned = 0
         try:
-            for dirpath, _, filenames in os.walk(base):
+            for dirpath, dirnames, filenames in os.walk(base):
+                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
+                scanned += 1
+                if scanned % 200 == 0:
+                    self._set_done_status(M("size_check_collecting", dirs=scanned))
                 for fn in filenames:
                     if os.path.splitext(fn)[1].lower() not in VIDEO_FILE_EXTS:
                         continue
@@ -265,7 +278,7 @@ class _MaintenanceMixin:
         try:
             for dirpath, dirnames, filenames in os.walk(base):
                 # Synology metadata/recycle bin folders aren't real content — skip them.
-                dirnames[:] = [d for d in dirnames if d not in ("@eaDir", "#recycle")]
+                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
                 for fn in filenames:
                     if os.path.splitext(fn)[1].lower() not in VIDEO_FILE_EXTS:
                         continue
@@ -383,7 +396,8 @@ class _MaintenanceMixin:
             return cached[2]
         id_file = {}
         try:
-            for dirpath, _, filenames in os.walk(base):
+            for dirpath, dirnames, filenames in os.walk(base):
+                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
                 for fn in filenames:
                     m = RES_FILE_ID_RE.search(fn)
                     if m:
@@ -487,6 +501,7 @@ class _MaintenanceMixin:
         files = []
         try:
             for dirpath, dirnames, filenames in os.walk(base):
+                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
                 for fn in filenames:
                     for marker in vid_markers:
                         if marker in fn:

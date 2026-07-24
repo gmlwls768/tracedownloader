@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.1.5"
+APP_VERSION = "1.1.6"
 # This app's own GitHub repo, for the in-app "check for updates" feature.
 APP_REPO_URL      = "https://github.com/gmlwls768/tracedownloader"
 APP_RELEASES_API  = "https://api.github.com/repos/gmlwls768/tracedownloader/releases/latest"
@@ -204,6 +204,10 @@ RES_FILE_ID_RE  = re.compile(r'\[([A-Za-z0-9_-]+)\]\.[^.]+$')
 # the archive id back out of a stored filepath when extractor_id is missing.
 FILE_ID_RE      = re.compile(r'\[([A-Za-z0-9_-]+)\](?:\.f\d+)?\.[^.]+$')
 VIDEO_FILE_EXTS = {".mp4", ".mkv", ".webm", ".avi", ".mov"}
+# Synology metadata / recycle-bin folders under the output dir: they hold no
+# real content (an @eaDir is one empty dir per media file), so every os.walk
+# over the library prunes them instead of descending into them.
+SCAN_SKIP_DIRS  = {"@eaDir", "#recycle"}
 
 UNIT_MULT = {"B":1, "KIB":1024, "MIB":1024**2, "GIB":1024**3, "TIB":1024**4,
              "KB":1000, "MB":1000**2, "GB":1000**3, "TB":1000**4}
@@ -650,6 +654,7 @@ __all__ = [
     "UNIT_MULT",
     "UTC",
     "VIDEO_FILE_EXTS",
+    "SCAN_SKIP_DIRS",
     "YTDLP_BIN",
     "_derive_group_state",
     "_exit_code_msg",
