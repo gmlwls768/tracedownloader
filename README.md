@@ -14,7 +14,7 @@ Two front ends share the same engine:
   Linux, other platforms run it from source).
 
 ![state](https://img.shields.io/badge/status-active-brightgreen)
-![version](https://img.shields.io/badge/version-1.1.0-blue)
+![version](https://img.shields.io/badge/version-1.1.6-blue)
 
 ![Windows app — Active tab with an expanded playlist group](docs/windows-active.png)
 
