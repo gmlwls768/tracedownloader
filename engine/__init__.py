@@ -137,7 +137,10 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
         threading.Thread(target=self._warm_tool_versions, daemon=True).start()
 
         if self._cfg_autostart:
-            threading.Timer(0.6, self._start_all).start()
+            # Resume in-flight work on boot, but don't re-try errors — a restart
+            # shouldn't silently re-download every failed video in an unfinished
+            # group. Errors are retried only by a manual Start / Error-Skip retry.
+            threading.Timer(0.6, lambda: self._start_all(reset_errors=False)).start()
 
     # ══════════════════════════════════════════
     #  NOTIFY / LOAD-SAVE / SHUTDOWN

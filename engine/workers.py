@@ -57,17 +57,22 @@ class _QueueMixin:
             try: self.job_queue.get_nowait(); self.job_queue.task_done()
             except queue.Empty: break
 
-    def _start_all(self):
+    def _start_all(self, reset_errors=True):
         self.global_stop.clear()
 
-        # Only reset paused/error → queued. Skip videos in completed groups (done tab).
+        # Resume paused (and, on a manual Start, retry error) → queued. Skip
+        # videos in completed groups (done tab). autostart passes
+        # reset_errors=False so a restart doesn't silently re-try every error in
+        # an unfinished group (incl. private/removed ones) — that stays a manual
+        # "Start" / "Error/Skip retry" action.
+        reset_states = ("paused", "error") if reset_errors else ("paused",)
         with self.lock:
             completed_gids = {t.id for t in self.tasks
                               if t.kind == "group" and t.state == "completed"}
             for t in self.tasks:
                 if t.kind == "video" and t.parent_group_id in completed_gids:
                     continue
-                if t.kind == "video" and t.state in ("paused", "error"):
+                if t.kind == "video" and t.state in reset_states:
                     t._cancelled = False
                     t._paused    = False
                     t.state, t.last_message = "queued", ""
