@@ -118,6 +118,11 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
         # pending 2-step delete-with-files confirmations: token -> [files]
         self._pending_deletes = {}
         self._pending_missing = {}
+        # result of the async missing-file scan, surfaced in snapshot() so the
+        # front end can open the redownload dialog; None when idle.
+        self._missing_prompt = None
+        # same, for the async "delete with files" scan → delete-confirm dialog.
+        self._delete_prompt = None
 
         # URLs that don't match a persist pattern: downloaded once, shown in
         # the "this session" list, never written to the database.
@@ -235,7 +240,7 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
     def _ephemeral_video_template(self, url=""):
         d = self._resolve_output_base(url)
         return os.path.join(d, "%(extractor_key)s", "%(uploader)s",
-                             "%(upload_date>%Y-%m-%d)s - %(title)s [%(id)s].%(ext)s")
+                             "%(upload_date>%Y-%m-%d)s - %(title).180B [%(id)s].%(ext)s")
 
     def _gallery_output_dir(self, url=""):
         """Gallery downloads go under a "gallery" subfolder of the default

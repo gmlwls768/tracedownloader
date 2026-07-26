@@ -177,6 +177,7 @@ en: {
   ctx_fresh: '⟳ Redownload from scratch', ctx_res_check: '📏 Check resolution',
   ctx_size_check: '📦 Check size', ctx_missing_check: '🔍 Find missing files',
   ctx_priority: '★ Download first', ctx_move_active: '📂 Move to active',
+  ctx_mark_done: '✅ Mark as done', marked_done: 'Marked as done',
   ctx_recheck_exclude: '🔕 Skip in bulk re-check (toggle)',
   ctx_copy_url: '🔗 Copy URL', ctx_open_video: '▶ Open video (desktop helper)',
   ctx_open_folder: '📁 Open folder (desktop helper)',
@@ -204,6 +205,7 @@ en: {
   missing_check_sel_title: '🔍 Find missing files',
   missing_check_sel_body: 'Check whether the completed videos in {n} selected item(s) still exist on disk?<br>(You confirm again before anything redownloads.)',
   missing_scan_toast: '🔍 Scanning folder…',
+  missing_scanning: '🔍 Scanning folder… {dirs} folders',
   missing_none_found: '✅ Checked {n} — nothing missing{extra}',
   missing_redownload_title: '🔍 Redownload missing files',
   missing_redownload_body: '<b>{missing}</b> of {checked} checked file(s) are missing from disk.{extra}<pre>{preview}</pre>Redownload them?',
@@ -212,6 +214,8 @@ en: {
   delete_task_title: 'Delete (keep files)', delete_task_body: 'Delete {n} task(s)?<br>Files are kept.',
   delete_files_title: 'Delete (with files)', delete_files_body: 'Delete {n} task(s)?<br>Their files are deleted too.',
   delete_confirm_label: 'Delete',
+  delete_scan_toast: '🗑 Finding files…',
+  delete_scanning: '🗑 Finding files… {dirs} folders',
   delete_files_confirm_title: 'Confirm file deletion',
   delete_files_confirm_body: 'Delete these {n} file(s)?<pre>{preview}</pre>',
   open_no_file: "⚠ File not found (maybe it hasn't downloaded yet)",
@@ -359,6 +363,7 @@ ko: {
   ctx_fresh: '⟳ 처음부터 재다운로드', ctx_res_check: '📏 해상도 검사',
   ctx_size_check: '📦 용량 검사', ctx_missing_check: '🔍 누락 파일 검사',
   ctx_priority: '★ 최우선 다운로드', ctx_move_active: '📂 진행 중으로 이동',
+  ctx_mark_done: '✅ 완료로 표시', marked_done: '완료로 표시됨',
   ctx_recheck_exclude: '🔕 전체 재확인에서 제외/해제',
   ctx_copy_url: '🔗 URL 복사', ctx_open_video: '▶ 동영상 열기 (데스크톱 헬퍼)',
   ctx_open_folder: '📁 파일 위치 열기 (데스크톱 헬퍼)',
@@ -386,6 +391,7 @@ ko: {
   missing_check_sel_title: '🔍 누락 파일 검사',
   missing_check_sel_body: '선택한 {n}개 항목의 완료 영상을 대상으로 파일 존재 여부를 검사합니까?<br>(재다운로드 전에 결과를 다시 확인합니다.)',
   missing_scan_toast: '🔍 폴더 스캔 중…',
+  missing_scanning: '🔍 폴더 스캔 중… {dirs}개 폴더',
   missing_none_found: '✅ 검사 {n}개 — 누락 없음{extra}',
   missing_redownload_title: '🔍 누락 파일 재다운로드',
   missing_redownload_body: '검사 {checked}개 중 <b>{missing}개</b>의 파일이 폴더에 없습니다.{extra}<pre>{preview}</pre>재다운로드합니까?',
@@ -394,6 +400,8 @@ ko: {
   delete_task_title: '삭제 (작업만)', delete_task_body: '{n}개 작업을 삭제합니까?<br>파일은 유지됩니다.',
   delete_files_title: '삭제 (파일 포함)', delete_files_body: '{n}개 작업을 삭제합니까?<br>관련 파일도 삭제됩니다.',
   delete_confirm_label: '삭제',
+  delete_scan_toast: '🗑 파일 찾는 중…',
+  delete_scanning: '🗑 파일 찾는 중… {dirs}개 폴더',
   delete_files_confirm_title: '파일 삭제 확인',
   delete_files_confirm_body: '파일 {n}개를 삭제하시겠습니까?<pre>{preview}</pre>',
   open_no_file: '⚠ 파일을 찾지 못했습니다 (아직 다운로드 전일 수 있음)',
@@ -538,6 +546,8 @@ function decodeMsg(raw) {
 // ───────── state ─────────
 let TAB = 'active';
 let SNAP = { active: [], done: [], orphans: [], ephemeral: [], stats: {}, done_status: '' };
+let HANDLED_MISSING_TOKEN = null;   // last missing_prompt token already shown
+let HANDLED_DELETE_TOKEN = null;    // last delete_prompt token already shown
 let EXPANDED = new Set(JSON.parse(localStorage.getItem('expanded') || '[]'));
 let SELECTED = new Set();
 let LAST_CLICK_ID = null;
@@ -711,6 +721,22 @@ function render() {
   statsLine();
   $('done-status').textContent = decodeMsg(SNAP.done_status || '');
   $('outdir').textContent = '📂 ' + (SNAP.output_dir || '');
+  // Async missing-file scan finished → open the redownload dialog once. Consume
+  // the server-side prompt immediately (token is kept locally for confirm) so a
+  // reload or a cancel doesn't re-open it.
+  const mp = SNAP.missing_prompt;
+  if (mp && mp.token !== HANDLED_MISSING_TOKEN) {
+    HANDLED_MISSING_TOKEN = mp.token;
+    api('/api/missing_dismiss', {});
+    openMissingPrompt(mp);
+  }
+  // Async "delete with files" scan finished → open the delete-confirm dialog.
+  const dp = SNAP.delete_prompt;
+  if (dp && dp.token !== HANDLED_DELETE_TOKEN) {
+    HANDLED_DELETE_TOKEN = dp.token;
+    api('/api/delete_dismiss', {});
+    openDeletePrompt(dp);
+  }
 }
 
 // ───────── tabs / search / done sort ─────────
@@ -789,6 +815,7 @@ function buildCtx() {
     { hr: 1 },
     { label: t('ctx_priority'),     act: () => doAction('priority') },
     { label: t('ctx_move_active'),  act: () => doAction('move_active') },
+    { label: t('ctx_mark_done'),    act: () => doAction('mark_done') },
     { label: t('ctx_recheck_exclude'), act: () => doAction('toggle_recheck_exclude') },
     { label: t('ctx_copy_url'),     act: copyUrls },
     { hr: 1 },
@@ -946,12 +973,14 @@ function confirmMissingCheckSel() {
   confirmModal(t('missing_check_sel_title'), t('missing_check_sel_body', { n: ids.length }), () => runMissingCheck({ ids }));
 }
 async function runMissingCheck(payload) {
+  // Fire-and-forget: the scan runs on the server thread and its result arrives
+  // via SNAP.missing_prompt (see render()), so a slow folder scan no longer
+  // blocks this request. Progress shows in the done-status line.
   toast(t('missing_scan_toast'));
-  const r = await api('/api/missing_check', payload);
-  if (!r) return;
-  if (r.error) { toast(decodeMsg(r.error)); return; }
+  await api('/api/missing_check', payload);
+}
+function openMissingPrompt(r) {
   const extra = r.noid ? t('missing_noid_suffix', { n: r.noid }) : '';
-  if (!r.missing.length) { toast(t('missing_none_found', { n: r.checked, extra })); return; }
   const preview = r.missing.slice(0, 12).map(m => esc(m.title)).join('\n') +
     (r.missing.length > 12 ? `\n… +${r.missing.length - 12}` : '');
   confirmModal(t('missing_redownload_title'),
@@ -965,16 +994,19 @@ function confirmDelete(withFiles) {
   const title = withFiles ? t('delete_files_title') : t('delete_task_title');
   const body  = withFiles ? t('delete_files_body', { n: SELECTED.size }) : t('delete_task_body', { n: SELECTED.size });
   confirmModal(title, body, async () => {
-    const r = await api('/api/delete', { ids: [...SELECTED], with_files: withFiles });
-    SELECTED.clear();
-    if (r && r.token && r.files.length) {
-      const preview = r.files.slice(0, 8).map(esc).join('\n') +
-        (r.files.length > 8 ? `\n… +${r.files.length - 8}` : '');
-      confirmModal(t('delete_files_confirm_title'),
-        t('delete_files_confirm_body', { n: r.files.length, preview }),
-        () => api('/api/delete_files', { token: r.token }), t('delete_confirm_label'));
-    }
+    const ids = [...SELECTED]; SELECTED.clear();
+    if (withFiles) toast(t('delete_scan_toast'));
+    // with_files starts an async file scan; the file list to confirm arrives
+    // via SNAP.delete_prompt (see render). Files aren't deleted until confirmed.
+    await api('/api/delete', { ids, with_files: withFiles });
   }, t('delete_confirm_label'));
+}
+function openDeletePrompt(r) {
+  const preview = r.files.slice(0, 8).map(esc).join('\n') +
+    (r.files.length > 8 ? `\n… +${r.files.length - 8}` : '');
+  confirmModal(t('delete_files_confirm_title'),
+    t('delete_files_confirm_body', { n: r.files.length, preview }),
+    () => api('/api/delete_files', { token: r.token }), t('delete_confirm_label'));
 }
 
 // ───────── drag reorder (active tab groups only) ─────────

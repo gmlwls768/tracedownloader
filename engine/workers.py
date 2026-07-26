@@ -601,3 +601,18 @@ class _QueueMixin:
             group.state = "queued"
             group.last_message = M("moved_to_active")
         self._request_refresh()
+
+    def _mark_group_done(self, group):
+        """Force an in-progress group to 'completed' (moves it to the Done tab).
+        Any queued/downloading children are stopped first so a 'done' group isn't
+        still pulling files; errors are left as-is (Done-tab errors are already
+        protected from the autostart retry)."""
+        self._stop_group(group)   # cancels downloads, queued/downloading -> paused
+        with self.lock:
+            group.state = "completed"
+            group.last_message = M("marked_done")
+        try:
+            self.db.upsert_group(group.to_group_dict())
+        except Exception as e:
+            self._show_toast(M("db_save_failed", error=str(e)))
+        self._request_refresh()

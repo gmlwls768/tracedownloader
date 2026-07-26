@@ -120,14 +120,22 @@ def reorder(body: dict):
 def delete(body: dict):
     ids        = body.get("ids") or []
     with_files = bool(body.get("with_files"))
-    token, files = engine.delete_tasks(ids, with_files=with_files)
-    return {"ok": True, "token": token, "files": files}
+    # with_files starts an async file scan; the file list to confirm arrives via
+    # snapshot's delete_prompt (see /api/delete_files, /api/delete_dismiss).
+    r = engine.delete_tasks(ids, with_files=with_files)
+    return {"ok": True, **r}
 
 
 @app.post("/api/delete_files")
 def delete_files(body: dict):
     ok = engine.confirm_delete_files(body.get("token") or "")
     return {"ok": ok}
+
+
+@app.post("/api/delete_dismiss")
+def delete_dismiss():
+    engine.dismiss_delete_prompt()
+    return {"ok": True}
 
 
 @app.post("/api/res_check")
@@ -154,8 +162,9 @@ def size_check(body: dict):
 
 @app.post("/api/missing_check")
 def missing_check(body: dict):
-    """Find videos marked completed in the DB whose file is actually gone —
-    returns a result plus a confirmation token (2-step, see /api/missing_confirm)."""
+    """Start an async scan for videos marked completed in the DB whose file is
+    actually gone. Returns immediately; the result is delivered via snapshot()'s
+    `missing_prompt` field (2-step, see /api/missing_confirm)."""
     if body.get("all_done"):
         return engine.missing_check()
     return engine.missing_check(body.get("ids") or [])
@@ -165,6 +174,12 @@ def missing_check(body: dict):
 def missing_confirm(body: dict):
     n = engine.confirm_missing_redownload(body.get("token") or "")
     return {"ok": n > 0, "count": n}
+
+
+@app.post("/api/missing_dismiss")
+def missing_dismiss():
+    engine.dismiss_missing_prompt()
+    return {"ok": True}
 
 
 @app.post("/api/done_ops")

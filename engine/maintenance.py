@@ -254,9 +254,12 @@ class _MaintenanceMixin:
 
     def missing_check(self, ids=None):
         """Find completed/skipped videos whose file is missing from the output
-        folder (synchronous scan). Doesn't re-download by itself - returns a
-        result + token, and confirm_missing_redownload(token) does that.
-        ids=None checks every completed group."""
+        folder. The scan is a full os.walk that can take minutes on a large/
+        networked library, so it runs on a background thread (like the
+        resolution/size checks) instead of blocking the HTTP request. The result
+        is published to snapshot()'s `missing_prompt` field, and the front end
+        shows the redownload confirm dialog from there; confirm_missing_redownload
+        (token) does the actual re-download. ids=None checks every completed group."""
         with self.lock:
             if ids is None:
                 gids = {t.id for t in self.tasks
@@ -268,17 +271,29 @@ class _MaintenanceMixin:
                        if t.kind == "video" and t.parent_group_id in gids
                        and t.state in ("completed", "skipped")]
         if not targets:
-            return {"error": M("no_completed_to_check")}
+            self._show_toast(M("no_completed_to_check"))
+            return {"started": False}
         base = os.path.abspath(self._cfg_output_dir or DEFAULT_OUTPUT_DIR)
         if not os.path.isdir(base):
-            return {"error": M("output_dir_missing", path=base)}
+            self._show_toast(M("output_dir_missing", path=base))
+            return {"started": False}
+        self._missing_prompt = None
+        self._set_done_status(M("missing_scanning", dirs=0))
+        threading.Thread(target=self._missing_check_worker,
+                         args=(targets, base), daemon=True).start()
+        return {"started": True}
+
+    def _missing_check_worker(self, targets, base):
         # Always a fresh full scan (no cache) — a stale cache could report an
         # existing file as missing.
-        present = set()
+        present, scanned = set(), 0
         try:
             for dirpath, dirnames, filenames in os.walk(base):
                 # Synology metadata/recycle bin folders aren't real content — skip them.
                 dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
+                scanned += 1
+                if scanned % 200 == 0:
+                    self._set_done_status(M("missing_scanning", dirs=scanned))
                 for fn in filenames:
                     if os.path.splitext(fn)[1].lower() not in VIDEO_FILE_EXTS:
                         continue
@@ -286,10 +301,14 @@ class _MaintenanceMixin:
                     if m:
                         present.add(m.group(1))
         except Exception as e:
-            return {"error": M("folder_scan_failed", error=str(e))}
+            self._set_done_status("")
+            self._show_toast(M("folder_scan_failed", error=str(e)))
+            return
         if not present:
             # An unmounted output folder would otherwise look "100% missing" — abort instead.
-            return {"error": M("output_dir_empty_abort")}
+            self._set_done_status("")
+            self._show_toast(M("output_dir_empty_abort"))
+            return
         missing, noid = [], 0
         for t in targets:
             vid = self._extract_vid_id(t)
@@ -298,17 +317,27 @@ class _MaintenanceMixin:
                 continue
             if vid not in present:
                 missing.append(t)
-        result = {"checked": len(targets), "noid": noid, "token": None,
-                  "missing": [{"title": t.title or t.url} for t in missing]}
-        if missing:
-            token = secrets.token_hex(8)
-            self._pending_missing[token] = missing
-            while len(self._pending_missing) > 8:
-                self._pending_missing.pop(next(iter(self._pending_missing)))
-            result["token"] = token
-        return result
+        self._set_done_status("")
+        if not missing:
+            self._show_toast(M("missing_none_found", n=len(targets), extra=""))
+            self._request_refresh()
+            return
+        token = secrets.token_hex(8)
+        self._pending_missing[token] = missing
+        while len(self._pending_missing) > 8:
+            self._pending_missing.pop(next(iter(self._pending_missing)))
+        # Published to snapshot; the front end opens the redownload dialog and
+        # clears it via confirm / dismiss.
+        self._missing_prompt = {"token": token, "checked": len(targets), "noid": noid,
+                                "missing": [{"title": t.title or t.url} for t in missing]}
+        self._request_refresh()
+
+    def dismiss_missing_prompt(self):
+        self._missing_prompt = None
+        self._request_refresh()
 
     def confirm_missing_redownload(self, token):
+        self._missing_prompt = None
         tasks = self._pending_missing.pop(token, None)
         if not tasks:
             return 0
@@ -490,18 +519,24 @@ class _MaintenanceMixin:
                 pass
         self._request_refresh()
 
-    def scan_files_for_delete(self, vid_ids):
-        """Single os.walk() pass — returns the files to delete and issues a
-        token. The actual delete happens in confirm_delete_files(token)."""
+    def _delete_scan_worker(self, vid_ids):
+        """Background os.walk() pass to find the files behind the selected ids
+        (a full scan can take minutes on a large/networked library, so it must
+        not block the request). Publishes the file list to snapshot's
+        `delete_prompt`; the front end then shows the delete-confirm dialog and
+        confirm_delete_files(token) does the actual delete."""
         base = os.path.abspath(self._cfg_output_dir or DEFAULT_OUTPUT_DIR)
         # Match the "[ID]" form from the output template exactly - a plain
         # substring match risks matching an unrelated file whose name
         # happens to contain a short id.
         vid_markers = {f"[{v}]" for v in vid_ids}
-        files = []
+        files, scanned = [], 0
         try:
             for dirpath, dirnames, filenames in os.walk(base):
                 dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
+                scanned += 1
+                if scanned % 200 == 0:
+                    self._set_done_status(M("delete_scanning", dirs=scanned))
                 for fn in filenames:
                     for marker in vid_markers:
                         if marker in fn:
@@ -510,16 +545,24 @@ class _MaintenanceMixin:
         except Exception as e:
             print(f"[walk] {e}")
         files = list(dict.fromkeys(files))
+        self._set_done_status("")
         if not files:
-            return None, []
+            self._request_refresh()
+            return
         token = secrets.token_hex(8)
         self._pending_deletes[token] = files
         # Keep only the most recent 8 pending confirmations.
         while len(self._pending_deletes) > 8:
             self._pending_deletes.pop(next(iter(self._pending_deletes)))
-        return token, files
+        self._delete_prompt = {"token": token, "files": files}
+        self._request_refresh()
+
+    def dismiss_delete_prompt(self):
+        self._delete_prompt = None
+        self._request_refresh()
 
     def confirm_delete_files(self, token):
+        self._delete_prompt = None
         files = self._pending_deletes.pop(token, None)
         if not files:
             return False
@@ -572,8 +615,14 @@ class _MaintenanceMixin:
             self._remove_ephemeral(remaining)
 
         if with_files and vid_ids:
-            return self.scan_files_for_delete(vid_ids)
-        return None, []
+            # The file scan is a full os.walk — run it async and deliver the
+            # result via snapshot's delete_prompt (see _delete_scan_worker).
+            self._delete_prompt = None
+            self._set_done_status(M("delete_scanning", dirs=0))
+            threading.Thread(target=self._delete_scan_worker,
+                             args=(vid_ids,), daemon=True).start()
+            return {"scanning": True}
+        return {"scanning": False}
 
     def _remove_ephemeral(self, ids):
         """Remove session-only entries (This session tab) by id - these
@@ -823,6 +872,9 @@ class _MaintenanceMixin:
         elif action == "move_active":
             for t in sel:
                 if t.kind == "group": self._move_to_active(t)
+        elif action == "mark_done":
+            for t in sel:
+                if t.kind == "group": self._mark_group_done(t)
         elif action == "res_check":
             groups = self._groups_for_ids(ids)
             if groups:

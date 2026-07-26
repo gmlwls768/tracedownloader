@@ -272,4 +272,6 @@ class _SettingsMixin:
             },
             "done_status": self.done_status,
             "output_dir":  self._cfg_output_dir,
+            "missing_prompt": self._missing_prompt,
+            "delete_prompt": self._delete_prompt,
         }

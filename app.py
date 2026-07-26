@@ -218,6 +218,8 @@ class App:
         self.done_asc = False
         self.snapshot = {"active": [], "done": [], "orphans": [], "ephemeral": [],
                           "stats": {}, "done_status": "", "output_dir": ""}
+        self._handled_missing_token = None   # last missing_prompt already shown
+        self._handled_delete_token = None    # last delete_prompt already shown
         self.row_meta = {}       # tree item id -> {"id":, "kind":, "url":}
         self.last_toast_id = 0
         self.toast_job = None
@@ -481,6 +483,41 @@ class App:
     def refresh(self):
         self.snapshot = self.engine.snapshot(q=self.search_text, expanded=list(self.expanded))
         self._render()
+        self._check_missing_prompt()
+        self._check_delete_prompt()
+
+    def _check_delete_prompt(self):
+        # The "delete with files" scan runs async; its file list surfaces in
+        # snapshot's delete_prompt. Open the confirm dialog once, consuming the
+        # server-side prompt (token kept for confirm) so it doesn't re-open.
+        dp = self.snapshot.get("delete_prompt")
+        if not dp or dp["token"] == self._handled_delete_token:
+            return
+        self._handled_delete_token = dp["token"]
+        self.engine.dismiss_delete_prompt()
+        preview_items = dp["files"][:50]
+        body = self.t("delete_files_confirm_body", n=len(dp["files"]), preview="")
+        if self.confirm_with_preview(self.t("delete_files_confirm_title"), body, preview_items,
+                                     self.t("delete_confirm_label")):
+            self.engine.confirm_delete_files(dp["token"])
+
+    def _check_missing_prompt(self):
+        # The missing-file scan runs async on the engine; its result surfaces in
+        # snapshot's missing_prompt. Open the redownload dialog once, consuming
+        # the server-side prompt (token kept for confirm) so it doesn't re-open.
+        mp = self.snapshot.get("missing_prompt")
+        if not mp or mp["token"] == self._handled_missing_token:
+            return
+        self._handled_missing_token = mp["token"]
+        self.engine.dismiss_missing_prompt()
+        noid = mp.get("noid") or 0
+        extra = self.t("missing_noid_suffix", n=noid) if noid else ""
+        preview_items = [m["title"] for m in mp["missing"][:50]]
+        body = self.t("missing_redownload_body", missing=len(mp["missing"]),
+                      checked=mp["checked"], extra=extra, preview="")
+        if self.confirm_with_preview(self.t("missing_redownload_title"), body, preview_items,
+                                     self.t("missing_redownload_label")):
+            self.engine.confirm_missing_redownload(mp["token"])
 
     def show_toast(self, msg):
         if not msg:
@@ -746,6 +783,7 @@ class App:
         m.add_separator()
         m.add_command(label=t("ctx_priority"), command=lambda: self.do_action("priority"))
         m.add_command(label=t("ctx_move_active"), command=lambda: self.do_action("move_active"))
+        m.add_command(label=t("ctx_mark_done"), command=lambda: self.do_action("mark_done"))
         m.add_command(label=t("ctx_recheck_exclude"),
                       command=lambda: self.do_action("toggle_recheck_exclude"))
         m.add_command(label=t("ctx_copy_url"), command=self.copy_urls)
@@ -838,22 +876,14 @@ class App:
             self._run_missing_check(ids=ids)
 
     def _run_missing_check(self, all_done=False, ids=None):
+        # Fire-and-forget: the scan runs on an engine thread and its result
+        # arrives async via snapshot's missing_prompt (see _check_missing_prompt),
+        # so a slow folder scan no longer freezes the UI.
         self.show_toast(self.t("missing_scan_toast"))
-        r = self.engine.missing_check() if all_done else self.engine.missing_check(ids)
-        if r.get("error"):
-            self.show_toast(self.t.decode(r["error"]))
-            return
-        noid = r.get("noid") or 0
-        extra = self.t("missing_noid_suffix", n=noid) if noid else ""
-        missing = r.get("missing") or []
-        if not missing:
-            self.show_toast(self.t("missing_none_found", n=r["checked"], extra=extra))
-            return
-        preview_items = [m["title"] for m in missing[:50]]
-        body = self.t("missing_redownload_body", missing=len(missing), checked=r["checked"], extra=extra, preview="")
-        if self.confirm_with_preview(self.t("missing_redownload_title"), body, preview_items,
-                                     self.t("missing_redownload_label")):
-            self.engine.confirm_missing_redownload(r["token"])
+        if all_done:
+            self.engine.missing_check()
+        else:
+            self.engine.missing_check(ids)
 
     def confirm_delete(self, with_files):
         ids = self.selected_ids()
@@ -865,13 +895,11 @@ class App:
             title, body = self.t("delete_task_title"), self.t("delete_task_body", n=len(ids))
         if not self.confirm(title, body):
             return
-        token, files = self.engine.delete_tasks(ids, with_files=with_files)
-        if token and files:
-            preview_items = files[:50]
-            body2 = self.t("delete_files_confirm_body", n=len(files), preview="")
-            if self.confirm_with_preview(self.t("delete_files_confirm_title"), body2, preview_items,
-                                         self.t("delete_confirm_label")):
-                self.engine.confirm_delete_files(token)
+        if with_files:
+            self.show_toast(self.t("delete_scan_toast"))
+        # with_files starts an async file scan; the file list to confirm arrives
+        # via snapshot's delete_prompt (see _check_delete_prompt).
+        self.engine.delete_tasks(ids, with_files=with_files)
 
     # ══════════════════════════════════════════
     #  QUIT

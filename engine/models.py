@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.1.7"
+APP_VERSION = "1.1.8"
 # This app's own GitHub repo, for the in-app "check for updates" feature.
 APP_REPO_URL      = "https://github.com/gmlwls768/tracedownloader"
 APP_RELEASES_API  = "https://api.github.com/repos/gmlwls768/tracedownloader/releases/latest"
@@ -111,7 +111,11 @@ def _pip_fallback_path():
                              "pip.exe" if os.name == "nt" else "pip")
     return candidate if os.path.isfile(candidate) else None
 DEFAULT_OUTPUT_DIR  = os.environ.get("APP_DEFAULT_OUTPUT", "download")
-OUTPUT_TEMPLATE_TPL = '{dir}/%(uploader)s/%(upload_date>%Y-%m-%d)s - %(title)s [%(id)s].%(ext)s'
+# %(title).180B caps the title at 180 UTF-8 bytes (yt-dlp trims on a byte
+# boundary, so multibyte titles stay valid) — a long title otherwise pushes the
+# filename past the 255-byte limit and yt-dlp fails with "File name too long"
+# (Errno 36). 180B + date/id/ext leaves headroom under 255.
+OUTPUT_TEMPLATE_TPL = '{dir}/%(uploader)s/%(upload_date>%Y-%m-%d)s - %(title).180B [%(id)s].%(ext)s'
 DB_FILE             = os.path.join(BASE_DIR, "app.db")
 ARCHIVE_FILE        = os.path.join(BASE_DIR, "downloaded_archive.txt")
 # gallery-dl's own --download-archive (SQLite). Used by persistent gallery
