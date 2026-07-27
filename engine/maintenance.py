@@ -445,7 +445,7 @@ class _MaintenanceMixin:
         base  = os.path.abspath(self._cfg_output_dir or DEFAULT_OUTPUT_DIR)
         # Resolve symlinks for the containment check: a filepath recorded under
         # one alias (e.g. /media/…) must still match an output_dir given under
-        # another that points into the same share (e.g. /projects). Without this
+        # another that points into the same share (e.g. /library). Without this
         # the fast path is skipped and locate falls back to a full, very slow
         # tree walk that can time the request out.
         rbase = os.path.realpath(base)
