@@ -537,14 +537,15 @@ class _QueueMixin:
         self._request_refresh()
 
     def _retry_errors_skipped(self, group):
-        """Re-queue only error/skipped videos in a group without re-checking the
+        """Re-queue only error videos in a group without re-checking the
         playlist. Private/404 errors are excluded since they always fail again.
-        Returns (retried count, excluded count)."""
+        Skipped ("already downloaded") videos are left alone — retrying them
+        just re-hits the archive. Returns (retried count, excluded count)."""
         with self.lock:
             candidates = [t for t in self.tasks
                           if t.parent_group_id == group.id
                           and t.kind == "video"
-                          and t.state in ("error", "skipped")]
+                          and t.state == "error"]
         targets  = [t for t in candidates if not _is_permanent_error(t)]
         excluded = len(candidates) - len(targets)
         if not targets:
