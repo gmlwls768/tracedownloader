@@ -248,11 +248,19 @@ class _QueueMixin:
 
         self._set_video_state(task, "downloading", M("starting"))
         cookies_tmp = self._cookies_tempcopy()
+        # An explicit redownload (missing/resolution/size check, "from scratch",
+        # error retry) must not be blocked by the archive. Deleting the id from
+        # the archive first only works when that id can be computed, and it
+        # can't be when the page embeds another site's player: yt-dlp records
+        # the embedded id, which nothing in the URL reveals. So the archive is
+        # left untouched and simply not consulted for this one run.
+        ignore_archive = bool(getattr(task, "_ignore_archive", False))
         cmd = [YTDLP_BIN, "-c", "--force-overwrites",
-               "-f", "bestvideo+bestaudio/best",
-               "--download-archive", ARCHIVE_FILE,
-               "-o", self._output_template(task.url),
-               "--no-warnings"]
+               "-f", "bestvideo+bestaudio/best"]
+        if not ignore_archive:
+            cmd += ["--download-archive", ARCHIVE_FILE]
+        cmd += ["-o", self._output_template(task.url),
+                "--no-warnings"]
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]
         cmd.append(task.url)
@@ -271,10 +279,18 @@ class _QueueMixin:
 
         last_error_line = ""
         dest_path = None   # final file path, for instant "locate"
+        real_id = None     # the id yt-dlp itself uses (= the archive key)
         exc = None
         try:
             for line in proc.stdout:
                 line = line.rstrip()
+                # Keep the LAST id yt-dlp reports, not the first: an embedded
+                # player resolves through two extractors ("[<site>] <site id>"
+                # then "[youtube] <embedded id>") and it is the final one that
+                # becomes the archive key.
+                mid = YTDLP_ID_LINE_RE.match(line)
+                if mid:
+                    real_id = mid.group(1)
                 m = PROGRESS_LINE_RE.search(line)
                 with self.lock:
                     task.last_message = line
@@ -337,6 +353,10 @@ class _QueueMixin:
                 task.progress_pct = 100.0
                 if dest_path:
                     task.filepath = os.path.abspath(dest_path)
+                # Put the real archive id on record, so a later redownload of
+                # this video never has to guess it from the URL.
+                if real_id and not task.extractor_id:
+                    task.extractor_id = real_id
             self._set_video_state(task, "completed", M("video_completed"))
             self._register_filepath(task)
             self._on_video_completed(task)
@@ -345,6 +365,12 @@ class _QueueMixin:
             self._set_video_state(task, "error", _exit_code_msg(proc.returncode, reason))
 
         self._update_group_state(task.parent_group_id)
+        if task.state in ("completed","error","skipped"):
+            # The run finished for good — a plain retry from here on should
+            # respect the archive again. Paused tasks keep the flag so that
+            # resuming a redownload isn't blocked by it.
+            with self.lock:
+                task._ignore_archive = False
         if task.state in ("completed","error","skipped","paused"):
             try:
                 self.db.upsert_video(task.to_video_dict())
@@ -557,10 +583,10 @@ class _QueueMixin:
             if vid:
                 vids.append(vid)
             t._paused = False; t._cancelled = False
+            t._ignore_archive = True
             with self.lock:
                 t.state, t.last_message = "queued", ""
         self.db.delete_history_many(vids)
-        self._remove_from_archive_many(vids)
         self._enqueue_tasks(targets)
         self._request_refresh()
         return len(targets), excluded
@@ -576,10 +602,10 @@ class _QueueMixin:
                 if vid:
                     vids.append(vid)
                 c._paused = False; c._cancelled = False
+                c._ignore_archive = True
                 with self.lock:
                     c.state, c.last_message = "queued", M("fresh_restart")
             self.db.delete_history_many(vids)
-            self._remove_from_archive_many(vids)
             self.global_stop.clear()
             self._enqueue_tasks(children)
             self._recheck_group(task)
@@ -588,8 +614,8 @@ class _QueueMixin:
         vid = self._extract_vid_id(task)
         if vid:
             self.db.delete_history(vid)
-            self._remove_from_archive(vid)
         task._paused = False; task._cancelled = False
+        task._ignore_archive = True
         with self.lock:
             task.state, task.last_message = "queued", M("fresh_restart")
         self.global_stop.clear()

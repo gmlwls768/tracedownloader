@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.1.9"
+APP_VERSION = "1.1.10"
 # This app's own GitHub repo, for the in-app "check for updates" feature.
 APP_REPO_URL      = "https://github.com/gmlwls768/tracedownloader"
 APP_RELEASES_API  = "https://api.github.com/repos/gmlwls768/tracedownloader/releases/latest"
@@ -207,6 +207,17 @@ RES_FILE_ID_RE  = re.compile(r'\[([A-Za-z0-9_-]+)\]\.[^.]+$')
 # Same [ID] bracket, but tolerant of a ".fNNN" fragment suffix — used to pull
 # the archive id back out of a stored filepath when extractor_id is missing.
 FILE_ID_RE      = re.compile(r'\[([A-Za-z0-9_-]+)\](?:\.f\d+)?\.[^.]+$')
+# yt-dlp announces the id it actually uses on lines like
+# "[youtube] jltbM0Zwr3g: Downloading webpage". That id — not the one guessed
+# from the URL — is what goes into the download archive, and for pages that
+# embed another site's player the two differ. Captured during the download so
+# the id is on record even if the file is later moved or deleted.
+# Only extractor tags count: they are lowercase ("youtube", "<site>"), while
+# yt-dlp's own stages are either CamelCase ("Merger") or one of the three
+# internal tags excluded here — "[download] Destination: ..." would otherwise
+# be read as an id named "Destination".
+YTDLP_ID_LINE_RE = re.compile(
+    r'^\[(?!download\]|info\]|debug\])[a-z][a-z0-9_:.+-]*\]\s+([A-Za-z0-9_-]+):\s')
 VIDEO_FILE_EXTS = {".mp4", ".mkv", ".webm", ".avi", ".mov"}
 # Synology metadata / recycle-bin folders under the output dir: they hold no
 # real content (an @eaDir is one empty dir per media file), so every os.walk
@@ -639,6 +650,7 @@ __all__ = [
     "FFPROBE_BIN",
     "FILENAME_TITLE_RE",
     "FILE_ID_RE",
+    "YTDLP_ID_LINE_RE",
     "GALLERYDL_BIN",
     "GALLERY_ARCHIVE",
     "GENERIC_URL_RE",

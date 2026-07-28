@@ -318,27 +318,6 @@ class _ResolveMixin:
             pass
         return ids
 
-    def _remove_from_archive(self, vid_id):
-        self._remove_from_archive_many([vid_id])
-
-    def _remove_from_archive_many(self, vid_ids):
-        """Remove many ids by rewriting the archive file once, not per id."""
-        vid_ids = {v for v in vid_ids if v}
-        if not vid_ids or not os.path.exists(ARCHIVE_FILE): return
-        tmp = ARCHIVE_FILE + ".tmp"
-        try:
-            with open(ARCHIVE_FILE, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            with open(tmp, "w", encoding="utf-8") as f:
-                for line in lines:
-                    parts = line.split()
-                    if parts and parts[-1] in vid_ids:
-                        continue
-                    f.write(line)
-            os.replace(tmp, ARCHIVE_FILE)
-        except OSError as e:
-            print(f"[archive] {e}")
-
     def _setup_gallery_group(self, group, meta=None, listing=False):
         """Persistent tracking for URLs only gallery-dl understands (artist
         pages, galleries). One child task stands for the whole URL and is

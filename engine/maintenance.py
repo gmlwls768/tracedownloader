@@ -131,8 +131,9 @@ class _MaintenanceMixin:
         self._show_toast(summary)
 
     def _apply_res_redownload(self, low, msg=None):
-        """Reset below-threshold videos for re-download (clears archive/history,
-        re-queues). Files aren't deleted — yt-dlp --force-overwrites replaces them."""
+        """Reset below-threshold videos for re-download (clears history, marks
+        them to bypass the download archive, re-queues). Files aren't deleted —
+        yt-dlp --force-overwrites replaces them."""
         if msg is None:
             msg = M("resolution_low_requeue")
         low = [t for t, _fp in low]
@@ -141,6 +142,7 @@ class _MaintenanceMixin:
             for t in low:
                 t._paused = False
                 t._cancelled = False
+                t._ignore_archive = True
                 t.state = "queued"
                 t.last_message = msg
                 if t.parent_group_id:
@@ -151,7 +153,6 @@ class _MaintenanceMixin:
                     g.state = "queued"
         vids = [v for v in (self._extract_vid_id(t) for t in low) if v]
         self.db.delete_history_many(vids)
-        self._remove_from_archive_many(vids)
         try:
             with self.lock:
                 gdicts = [g.to_group_dict() for g in self.tasks

@@ -29,3 +29,6 @@ venv-win/
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# local-only tool settings (never shared)
+*.local.json
