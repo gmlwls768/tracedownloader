@@ -220,6 +220,15 @@ class _ResolveMixin:
         if not isinstance(entries, list) or not entries:
             entries = [j]
 
+        # Display name for the group: the listing's own title (an artist/profile
+        # page gives the artist name, a single video gives its title). Only
+        # filled in when still empty so a name set elsewhere isn't overwritten.
+        if not group.title:
+            gtitle = str(j.get("title") or "").strip()
+            if gtitle:
+                with self.lock:
+                    group.title = gtitle
+
         existing_urls = self.db.video_urls_for_group(group.id)
         new_tasks, skip_cnt = [], 0
         url_title = {}   # backfill title on existing videos that don't have one

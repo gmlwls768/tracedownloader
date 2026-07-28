@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.1.10"
+APP_VERSION = "1.1.11"
 # This app's own GitHub repo, for the in-app "check for updates" feature.
 APP_REPO_URL      = "https://github.com/gmlwls768/tracedownloader"
 APP_RELEASES_API  = "https://api.github.com/repos/gmlwls768/tracedownloader/releases/latest"
@@ -322,6 +322,12 @@ class DB:
             # '' = resolved/downloaded by yt-dlp, 'gallery' = gallery-dl.
             self._exec("ALTER TABLE groups ADD COLUMN media TEXT DEFAULT ''")
         except sqlite3.OperationalError:
+            pass  # already exists
+        try:
+            # Display name from the listing metadata (artist/profile or video
+            # title), shown next to the URL in the list.
+            self._exec("ALTER TABLE groups ADD COLUMN title TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
             pass
         self._exec("""CREATE TABLE IF NOT EXISTS videos(
             id TEXT PRIMARY KEY, group_id TEXT, url TEXT NOT NULL,
@@ -362,8 +368,8 @@ class DB:
                 # (Task.modified_at) - overwriting with `now` in bulk would
                 # make "sort by last modified" meaningless.
                 c.executemany("""INSERT INTO groups
-                    (id,url,state,expected_count,completed_count,last_message,sort_order,no_recheck,media,created_at,updated_at)
-                    VALUES(:id,:url,:state,:expected_count,:completed_count,:last_message,:sort_order,:no_recheck,:media,:now,:updated_at)
+                    (id,url,state,expected_count,completed_count,last_message,sort_order,no_recheck,media,title,created_at,updated_at)
+                    VALUES(:id,:url,:state,:expected_count,:completed_count,:last_message,:sort_order,:no_recheck,:media,:title,:now,:updated_at)
                     ON CONFLICT(id) DO UPDATE SET state=excluded.state,
                     expected_count=excluded.expected_count,
                     completed_count=excluded.completed_count,
@@ -371,6 +377,7 @@ class DB:
                     sort_order=excluded.sort_order,
                     no_recheck=excluded.no_recheck,
                     media=excluded.media,
+                    title=COALESCE(NULLIF(excluded.title,''), groups.title),
                     updated_at=excluded.updated_at
                 """, [{**g, "now": now} for g in groups])
             if videos:
@@ -541,6 +548,7 @@ class Task:
                     sort_order=self.sort_order,
                     no_recheck=self.no_recheck,
                     media=self.media,
+                    title=self.title or "",
                     updated_at=datetime.fromtimestamp(self.modified_at, UTC).isoformat())
 
     def to_video_dict(self):
@@ -567,6 +575,7 @@ class Task:
                  sort_order=r["sort_order"] if "sort_order" in r.keys() else 0)
         t.no_recheck = r["no_recheck"] if "no_recheck" in r.keys() and r["no_recheck"] else 0
         t.media = r["media"] if "media" in r.keys() and r["media"] else ""
+        t.title = r["title"] if "title" in r.keys() and r["title"] else ""
         return t
 
     @staticmethod

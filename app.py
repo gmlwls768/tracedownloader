@@ -570,9 +570,11 @@ class App:
     def _insert_group_row(self, g):
         gid = g["id"]
         iid = f"g_{gid}"
+        gtitle = g.get("title") or ""
+        gurl = g["url"] or ""
         name = (("★ " if g.get("priority") else "")
                 + ("🔕 " if g.get("no_recheck") else "")
-                + (g["url"] or ""))
+                + (f"{gtitle} — {gurl}" if gtitle else gurl))
         expected = g.get("expected")
         cnt = f"{g['completed']}/{expected if expected is not None else '?'} ({g.get('pct', 0)}%)"
         dl = str(g["dling"]) if g.get("dling") else ""

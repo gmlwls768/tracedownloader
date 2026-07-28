@@ -657,7 +657,7 @@ function groupRow(g, showRank) {
   const msg = decodeMsg(g.message);
   return `<tr class="row grouprow g-${g.state} ${SELECTED.has(g.id) ? 'sel' : ''}" data-id="${g.id}" data-kind="group" draggable="${TAB === 'active'}">
     <td><span class="expander" data-exp="${g.id}">${arrow}</span>${rankTxt}</td>
-    <td class="namecell" title="${esc(g.url)}">${prio}${bell}${esc(g.url)}</td>
+    <td class="namecell" title="${esc(g.url)}">${prio}${bell}${esc(g.title ? g.title + ' — ' + g.url : g.url)}</td>
     <td class="${stateCls(g.state)}">${esc(stateLabel(g.state))}</td>
     <td>${cnt}</td><td>${esc(dl)}</td>
     <td class="msgcell" title="${esc(msg)}">${esc(msg)}</td></tr>`;

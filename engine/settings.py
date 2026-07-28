@@ -212,6 +212,7 @@ class _SettingsMixin:
                 pct = int(round(100 * (g.completed_count or 0) / g.expected_count))
             d = {
                 "id": g.id, "kind": "group", "url": g.url,
+                "title": g.title or "",
                 "state": g.state,
                 "expected": g.expected_count, "completed": g.completed_count,
                 "pct": pct,
