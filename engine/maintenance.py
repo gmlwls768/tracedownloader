@@ -69,29 +69,46 @@ class _MaintenanceMixin:
         self.done_status = msg
         self._request_refresh()
 
-    def _res_check_worker(self, targets, base, threshold):
-        # 1) One os.walk pass builds a video-id -> filepath map.
-        id_file = {}
-        scanned = 0
-        try:
-            for dirpath, dirnames, filenames in os.walk(base):
-                # Synology metadata/recycle folders hold no real content — skip
-                # them (an @eaDir is one empty dir per file, so on a large NAS
-                # they dominate the walk while yielding nothing).
-                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
-                scanned += 1
-                if scanned % 200 == 0:
-                    self._set_done_status(M("res_check_collecting", dirs=scanned))
-                for fn in filenames:
-                    if os.path.splitext(fn)[1].lower() not in VIDEO_FILE_EXTS:
-                        continue
-                    m = RES_FILE_ID_RE.search(fn)
-                    if m:
-                        id_file[m.group(1)] = os.path.join(dirpath, fn)
-        except Exception as e:
-            print(f"[res_filter] walk: {e}")
+    def _scan_id_files(self, base, progress_key=None, video_only=True):
+        """One os.walk over the output folder -> {video id: file path}.
 
-        # 2) Match targets to files.
+        Every maintenance tool needs the same map and the walk is the expensive
+        part on a networked library, so the shape lives here and callers only
+        vary the progress label. Synology metadata/recycle folders are pruned
+        rather than descended into: an @eaDir is one empty directory per media
+        file, so on a large NAS they dominate the walk while yielding nothing,
+        and #recycle would otherwise report deleted files as still present."""
+        id_file, scanned = {}, 0
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
+            scanned += 1
+            if progress_key and scanned % 200 == 0:
+                self._set_done_status(M(progress_key, dirs=scanned))
+            for fn in filenames:
+                if video_only and os.path.splitext(fn)[1].lower() not in VIDEO_FILE_EXTS:
+                    continue
+                m = RES_FILE_ID_RE.search(fn)
+                if m:
+                    id_file[m.group(1)] = os.path.join(dirpath, fn)
+        return id_file
+
+    def _collect_below_threshold(self, targets, base, collecting_key, progress_key,
+                                 log_tag, measure, is_low, report_every):
+        """Shared body of the resolution and size checks.
+
+        One folder scan, match each target to its file, then measure every match
+        in parallel and keep the ones under the threshold. A file that can't be
+        read counts as under it — either way the video has to be fetched again.
+        Only the measurement and the labels differ between the two checks.
+
+        Returns (files checked, [(task, path)] to redownload, targets with no
+        file on disk)."""
+        id_file = {}
+        try:
+            id_file = self._scan_id_files(base, collecting_key)
+        except Exception as e:
+            print(f"[{log_tag}] walk: {e}")
+
         pairs, missing = [], 0
         for t in targets:
             vid = self._extract_vid_id(t)
@@ -101,28 +118,33 @@ class _MaintenanceMixin:
             else:
                 missing += 1
 
-        # 3) Parallel ffprobe — a short side below threshold, or an unreadable
-        # (corrupt) file, both trigger a re-download.
         total = len(pairs)
-        done_box = [0]
-        plock = threading.Lock()
+        done_box, plock = [0], threading.Lock()
 
-        def probe_one(pair):
+        def measure_one(pair):
             t, fp = pair
-            side = self._probe_min_side(fp)
+            value = measure(fp)
             with plock:
                 done_box[0] += 1
                 d = done_box[0]
-            if d % 25 == 0 or d == total:
-                self._set_done_status(M("res_check_progress", done=d, total=total))
-            return t, fp, side
+            if d % report_every == 0 or d == total:
+                self._set_done_status(M(progress_key, done=d, total=total))
+            return t, fp, value
 
         low = []   # [(task, filepath)]
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-            for t, fp, side in ex.map(probe_one, pairs):
-                if side is None or side < threshold:
+            for t, fp, value in ex.map(measure_one, pairs):
+                if is_low(value):
                     low.append((t, fp))
+        return total, low, missing
 
+    def _res_check_worker(self, targets, base, threshold):
+        total, low, missing = self._collect_below_threshold(
+            targets, base,
+            collecting_key="res_check_collecting", progress_key="res_check_progress",
+            log_tag="res_filter", measure=self._probe_min_side,
+            is_low=lambda side: side is None or side < threshold,
+            report_every=25)
         if low:
             self._apply_res_redownload(low)
         summary = (M("res_check_summary_missing", total=total, redownload=len(low), missing=missing)
@@ -139,12 +161,8 @@ class _MaintenanceMixin:
         low = [t for t, _fp in low]
         gids = set()
         with self.lock:
+            self._mark_for_redownload(low, msg)
             for t in low:
-                t._paused = False
-                t._cancelled = False
-                t._ignore_archive = True
-                t.state = "queued"
-                t.last_message = msg
                 if t.parent_group_id:
                     gids.add(t.parent_group_id)
             # Move completed groups back to active, bypassing the completed-state guard.
@@ -191,58 +209,18 @@ class _MaintenanceMixin:
                          args=(targets, base, threshold), daemon=True).start()
 
     def _size_check_worker(self, targets, base, threshold):
-        # 1) One os.walk pass builds a video-id -> filepath map (same as res_check).
-        id_file = {}
-        scanned = 0
-        try:
-            for dirpath, dirnames, filenames in os.walk(base):
-                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
-                scanned += 1
-                if scanned % 200 == 0:
-                    self._set_done_status(M("size_check_collecting", dirs=scanned))
-                for fn in filenames:
-                    if os.path.splitext(fn)[1].lower() not in VIDEO_FILE_EXTS:
-                        continue
-                    m = RES_FILE_ID_RE.search(fn)
-                    if m:
-                        id_file[m.group(1)] = os.path.join(dirpath, fn)
-        except Exception as e:
-            print(f"[size_filter] walk: {e}")
-
-        # 2) Match targets to files.
-        pairs, missing = [], 0
-        for t in targets:
-            vid = self._extract_vid_id(t)
-            fp = id_file.get(vid) if vid else None
-            if fp:
-                pairs.append((t, fp))
-            else:
-                missing += 1
-
-        # 3) Parallel stat — at/below threshold, or unreadable, triggers a re-download.
-        total = len(pairs)
-        done_box = [0]
-        plock = threading.Lock()
-
-        def size_one(pair):
-            t, fp = pair
+        def size_of(fp):
             try:
-                size = os.path.getsize(fp)
+                return os.path.getsize(fp)
             except Exception:
-                size = None
-            with plock:
-                done_box[0] += 1
-                d = done_box[0]
-            if d % 200 == 0 or d == total:
-                self._set_done_status(M("size_check_progress", done=d, total=total))
-            return t, fp, size
+                return None
 
-        low = []   # [(task, filepath)]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-            for t, fp, size in ex.map(size_one, pairs):
-                if size is None or size <= threshold:
-                    low.append((t, fp))
-
+        total, low, missing = self._collect_below_threshold(
+            targets, base,
+            collecting_key="size_check_collecting", progress_key="size_check_progress",
+            log_tag="size_filter", measure=size_of,
+            is_low=lambda size: size is None or size <= threshold,
+            report_every=200)
         if low:
             self._apply_res_redownload(low, msg=M("size_low_requeue"))
         threshold_mb = threshold // (1024 * 1024)
@@ -287,20 +265,9 @@ class _MaintenanceMixin:
     def _missing_check_worker(self, targets, base):
         # Always a fresh full scan (no cache) — a stale cache could report an
         # existing file as missing.
-        present, scanned = set(), 0
+        present = set()
         try:
-            for dirpath, dirnames, filenames in os.walk(base):
-                # Synology metadata/recycle bin folders aren't real content — skip them.
-                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
-                scanned += 1
-                if scanned % 200 == 0:
-                    self._set_done_status(M("missing_scanning", dirs=scanned))
-                for fn in filenames:
-                    if os.path.splitext(fn)[1].lower() not in VIDEO_FILE_EXTS:
-                        continue
-                    m = RES_FILE_ID_RE.search(fn)
-                    if m:
-                        present.add(m.group(1))
+            present = set(self._scan_id_files(base, "missing_scanning"))
         except Exception as e:
             self._set_done_status("")
             self._show_toast(M("folder_scan_failed", error=str(e)))
@@ -426,12 +393,9 @@ class _MaintenanceMixin:
             return cached[2]
         id_file = {}
         try:
-            for dirpath, dirnames, filenames in os.walk(base):
-                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
-                for fn in filenames:
-                    m = RES_FILE_ID_RE.search(fn)
-                    if m:
-                        id_file[m.group(1)] = os.path.join(dirpath, fn)
+            # No extension filter here: this map also answers "open folder" for
+            # non-video downloads.
+            id_file = self._scan_id_files(base, video_only=False)
         except Exception as e:
             print(f"[locate] walk: {e}")
         self._locate_cache = (base, time.time(), id_file)

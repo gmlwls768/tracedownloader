@@ -25,6 +25,22 @@ class _QueueMixin:
         for t in tasks:
             self._queue_put(t)
 
+    def _mark_for_redownload(self, tasks, message=""):
+        """Reset tasks so they download again, however that was asked for
+        (missing/resolution/size check, "from scratch", error retry).
+
+        `_ignore_archive` is the important part: the download archive is left
+        untouched and simply not consulted for the next run of these tasks —
+        see _run_download for why its key cannot be derived reliably.
+
+        The caller holds self.lock (it is not reentrant)."""
+        for t in tasks:
+            t._paused = False
+            t._cancelled = False
+            t._ignore_archive = True
+            t.state = "queued"
+            t.last_message = message
+
     def _requeue_by_tasks_order(self, new_tasks: list):
         """Drain queue, merge with new_tasks, re-enqueue in self.tasks order."""
         with self._requeue_lock:
@@ -577,15 +593,9 @@ class _QueueMixin:
         if not targets:
             return 0, excluded
         self.global_stop.clear()
-        vids = []
-        for t in targets:
-            vid = self._extract_vid_id(t)
-            if vid:
-                vids.append(vid)
-            t._paused = False; t._cancelled = False
-            t._ignore_archive = True
-            with self.lock:
-                t.state, t.last_message = "queued", ""
+        vids = [v for v in (self._extract_vid_id(t) for t in targets) if v]
+        with self.lock:
+            self._mark_for_redownload(targets)
         self.db.delete_history_many(vids)
         self._enqueue_tasks(targets)
         self._request_refresh()
@@ -596,15 +606,9 @@ class _QueueMixin:
             with self.lock:
                 children = [t for t in self.tasks if t.parent_group_id == task.id]
             # Batch-remove archive/history entries once instead of per video.
-            vids = []
-            for c in children:
-                vid = self._extract_vid_id(c)
-                if vid:
-                    vids.append(vid)
-                c._paused = False; c._cancelled = False
-                c._ignore_archive = True
-                with self.lock:
-                    c.state, c.last_message = "queued", M("fresh_restart")
+            vids = [v for v in (self._extract_vid_id(c) for c in children) if v]
+            with self.lock:
+                self._mark_for_redownload(children, M("fresh_restart"))
             self.db.delete_history_many(vids)
             self.global_stop.clear()
             self._enqueue_tasks(children)
@@ -614,10 +618,8 @@ class _QueueMixin:
         vid = self._extract_vid_id(task)
         if vid:
             self.db.delete_history(vid)
-        task._paused = False; task._cancelled = False
-        task._ignore_archive = True
         with self.lock:
-            task.state, task.last_message = "queued", M("fresh_restart")
+            self._mark_for_redownload([task], M("fresh_restart"))
         self.global_stop.clear()
         self._queue_put(task)
         self._update_group_state(task.parent_group_id)
