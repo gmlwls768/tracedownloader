@@ -300,10 +300,10 @@ class _QueueMixin:
         try:
             for line in proc.stdout:
                 line = line.rstrip()
-                # Keep the LAST id yt-dlp reports, not the first: an embedded
-                # player resolves through two extractors ("[<site>] <site id>"
-                # then "[youtube] <embedded id>") and it is the final one that
-                # becomes the archive key.
+                # Keep the LAST id yt-dlp reports, not the first: a page with an
+                # embedded player resolves through two extractors — the host
+                # page, then the player it embeds — and it is the final one
+                # whose id becomes the archive key.
                 mid = YTDLP_ID_LINE_RE.match(line)
                 if mid:
                     real_id = mid.group(1)

@@ -212,10 +212,10 @@ FILE_ID_RE      = re.compile(r'\[([A-Za-z0-9_-]+)\](?:\.f\d+)?\.[^.]+$')
 # from the URL — is what goes into the download archive, and for pages that
 # embed another site's player the two differ. Captured during the download so
 # the id is on record even if the file is later moved or deleted.
-# Only extractor tags count: they are lowercase ("youtube", "<site>"), while
-# yt-dlp's own stages are either CamelCase ("Merger") or one of the three
-# internal tags excluded here — "[download] Destination: ..." would otherwise
-# be read as an id named "Destination".
+# Only extractor tags count: an extractor is named in lowercase, while yt-dlp's
+# own stages are either CamelCase ("Merger") or one of the three internal tags
+# excluded here — "[download] Destination: ..." would otherwise be read as an id
+# named "Destination".
 YTDLP_ID_LINE_RE = re.compile(
     r'^\[(?!download\]|info\]|debug\])[a-z][a-z0-9_:.+-]*\]\s+([A-Za-z0-9_-]+):\s')
 VIDEO_FILE_EXTS = {".mp4", ".mkv", ".webm", ".avi", ".mov"}
