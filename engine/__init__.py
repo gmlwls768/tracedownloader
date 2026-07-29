@@ -123,6 +123,9 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
         self._missing_prompt = None
         # same, for the async "delete with files" scan → delete-confirm dialog.
         self._delete_prompt = None
+        # pending "which kinds of error should be retried" choices: token -> [group ids]
+        self._pending_retry = {}
+        self._retry_prompt = None
 
         # URLs that don't match a persist pattern: downloaded once, shown in
         # the "this session" list, never written to the database.

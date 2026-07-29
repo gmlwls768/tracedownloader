@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 # This app's own GitHub repo, for the in-app "check for updates" feature.
 APP_REPO_URL      = "https://github.com/gmlwls768/tracedownloader"
 APP_RELEASES_API  = "https://api.github.com/repos/gmlwls768/tracedownloader/releases/latest"
@@ -611,6 +611,45 @@ def _is_permanent_error(task):
     return _is_private_error(task) or _is_404_error(task)
 
 
+# Retry categories. Everything that isn't recognised falls in "other", which is
+# the only group worth retrying blindly — the rest need a cookie, or the source
+# is gone for good, so they are opt-in per retry instead of being retried on
+# every pass. Order matters: the first match wins.
+ERROR_CATEGORIES = ("private", "unavailable", "notfound", "login", "other")
+
+
+def _trim_reason(line, limit=200):
+    """Shorten a tool's error line for storage without cutting mid-word.
+
+    A hard slice used to land inside the sentence that explains the failure —
+    "...because the account associate" — which reads like an error code of its
+    own instead of a reason."""
+    line = (line or "").strip()
+    if len(line) <= limit:
+        return line
+    cut = line[:limit]
+    space = cut.rfind(" ")
+    if space > limit * 0.6:
+        cut = cut[:space]
+    return cut.rstrip(" ,.;:") + "…"
+
+
+def classify_error(task):
+    """Which retry category a failed task belongs to."""
+    msg = (task.last_message or "").lower()
+    if "private video" in msg:
+        return "private"
+    # "no longer available because the ... account ... has been terminated",
+    # and the bare "Video unavailable" it shares a prefix with.
+    if "video unavailable" in msg:
+        return "unavailable"
+    if "http error 404" in msg:
+        return "notfound"
+    if "need login" in msg or "log in" in msg:
+        return "login"
+    return "other"
+
+
 def _derive_group_state(children: list) -> str:
     """
     Rules (priority order):
@@ -688,6 +727,9 @@ __all__ = [
     "_gallery_meta_fields",
     "_is_404_error",
     "_is_permanent_error",
+    "ERROR_CATEGORIES",
+    "classify_error",
+    "_trim_reason",
     "_is_private_error",
     "_managed_bin_path",
     "_pip_fallback_path",

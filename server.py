@@ -182,6 +182,25 @@ def missing_dismiss():
     return {"ok": True}
 
 
+@app.post("/api/retry_scan")
+def retry_scan(body: dict):
+    """Count failures per category and offer them for selection; the retry
+    itself runs from /api/retry_confirm (see snapshot's `retry_prompt`)."""
+    return engine.retry_scan(body.get("ids") or [])
+
+
+@app.post("/api/retry_confirm")
+def retry_confirm(body: dict):
+    n = engine.confirm_retry(body.get("token") or "", body.get("categories") or [])
+    return {"ok": n > 0, "count": n}
+
+
+@app.post("/api/retry_dismiss")
+def retry_dismiss():
+    engine.dismiss_retry_prompt()
+    return {"ok": True}
+
+
 @app.post("/api/done_ops")
 def done_ops(body: dict):
     op = body.get("op") or ""

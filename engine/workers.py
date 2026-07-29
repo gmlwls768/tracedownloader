@@ -377,7 +377,7 @@ class _QueueMixin:
             self._register_filepath(task)
             self._on_video_completed(task)
         else:
-            reason = last_error_line[:120] if last_error_line else ""
+            reason = _trim_reason(last_error_line)
             self._set_video_state(task, "error", _exit_code_msg(proc.returncode, reason))
 
         self._update_group_state(task.parent_group_id)
@@ -578,17 +578,24 @@ class _QueueMixin:
         self._update_group_state(task.parent_group_id)
         self._request_refresh()
 
-    def _retry_errors_skipped(self, group):
-        """Re-queue only error videos in a group without re-checking the
-        playlist. Private/404 errors are excluded since they always fail again.
-        Skipped ("already downloaded") videos are left alone — retrying them
-        just re-hits the archive. Returns (retried count, excluded count)."""
+    def _retry_errors_skipped(self, group, categories=None):
+        """Re-queue error videos in a group without re-checking the playlist.
+
+        `categories` picks which kinds of failure to include (see
+        classify_error); without it, anything that always fails for the same
+        reason is left out. Skipped ("already downloaded") videos are never
+        touched — retrying them just re-hits the archive.
+        Returns (retried count, excluded count)."""
         with self.lock:
             candidates = [t for t in self.tasks
                           if t.parent_group_id == group.id
                           and t.kind == "video"
                           and t.state == "error"]
-        targets  = [t for t in candidates if not _is_permanent_error(t)]
+        if categories is None:
+            targets = [t for t in candidates if not _is_permanent_error(t)]
+        else:
+            wanted = set(categories)
+            targets = [t for t in candidates if classify_error(t) in wanted]
         excluded = len(candidates) - len(targets)
         if not targets:
             return 0, excluded

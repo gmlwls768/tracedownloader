@@ -174,6 +174,13 @@ en: {
   kind_gallery: '🖼 Gallery', kind_video: '🎬 Video',
   ctx_start: '▶ Start / Resume', ctx_pause: '⏸ Pause', ctx_stop: '⏹ Stop (group)',
   ctx_retry: '↺ Retry errors', ctx_recheck: '🔄 Re-check (find new videos)',
+  retry_select_title: '↺ Retry errors',
+  retry_select_body: 'Pick which failures to retry ({total} in total). Only the temporary ones are ticked — the rest fail the same way every time unless something changed.',
+  err_cat_private: 'Private / members only',
+  err_cat_unavailable: 'Removed or account terminated',
+  err_cat_notfound: 'Not found (404)',
+  err_cat_login: 'Needs a login',
+  err_cat_other: 'Temporary / other',
   ctx_fresh: '⟳ Redownload from scratch', ctx_res_check: '📏 Check resolution',
   ctx_size_check: '📦 Check size', ctx_missing_check: '🔍 Find missing files',
   ctx_priority: '★ Download first', ctx_move_active: '📂 Move to active',
@@ -360,6 +367,13 @@ ko: {
   kind_gallery: '🖼 갤러리', kind_video: '🎬 영상',
   ctx_start: '▶ 시작 / 재개', ctx_pause: '⏸ 일시정지', ctx_stop: '⏹ 정지 (그룹)',
   ctx_retry: '↺ 오류 재시도', ctx_recheck: '🔄 재확인 (새 영상 확인)',
+  retry_select_title: '↺ 오류 재시도',
+  retry_select_body: '다시 시도할 오류를 고르세요 (총 {total}개). 일시적인 것만 체크되어 있습니다 — 나머지는 상황이 바뀌지 않는 한 매번 같은 이유로 실패합니다.',
+  err_cat_private: '비공개 / 멤버 전용',
+  err_cat_unavailable: '삭제됨 · 계정 정지',
+  err_cat_notfound: '없는 주소 (404)',
+  err_cat_login: '로그인 필요',
+  err_cat_other: '일시적 · 기타',
   ctx_fresh: '⟳ 처음부터 재다운로드', ctx_res_check: '📏 해상도 검사',
   ctx_size_check: '📦 용량 검사', ctx_missing_check: '🔍 누락 파일 검사',
   ctx_priority: '★ 최우선 다운로드', ctx_move_active: '📂 진행 중으로 이동',
@@ -548,6 +562,7 @@ let TAB = 'active';
 let SNAP = { active: [], done: [], orphans: [], ephemeral: [], stats: {}, done_status: '' };
 let HANDLED_MISSING_TOKEN = null;   // last missing_prompt token already shown
 let HANDLED_DELETE_TOKEN = null;    // last delete_prompt token already shown
+let HANDLED_RETRY_TOKEN = null;     // last retry_prompt token already shown
 let EXPANDED = new Set(JSON.parse(localStorage.getItem('expanded') || '[]'));
 let SELECTED = new Set();
 let LAST_CLICK_ID = null;
@@ -737,6 +752,13 @@ function render() {
     api('/api/delete_dismiss', {});
     openDeletePrompt(dp);
   }
+  // Error counts per category arrived → let the user pick what to retry.
+  const rp = SNAP.retry_prompt;
+  if (rp && rp.token !== HANDLED_RETRY_TOKEN) {
+    HANDLED_RETRY_TOKEN = rp.token;
+    api('/api/retry_dismiss', {});
+    openRetryPrompt(rp);
+  }
 }
 
 // ───────── tabs / search / done sort ─────────
@@ -806,7 +828,7 @@ function buildCtx() {
     { label: t('ctx_pause'),        act: () => doAction('pause') },
     { label: t('ctx_stop'),         act: () => doAction('stop') },
     { hr: 1 },
-    { label: t('ctx_retry'),        act: () => doAction('retry') },
+    { label: t('ctx_retry'),        act: () => retrySelected() },
     { label: t('ctx_recheck'),      act: () => doAction('recheck') },
     { label: t('ctx_fresh'),        act: () => confirmFresh() },
     { label: t('ctx_res_check'),    act: () => confirmResCheckSel() },
@@ -938,8 +960,23 @@ function confirmRedownloadAll() {
 function confirmRecheckAll() {
   confirmModal(t('recheck_all_title'), t('recheck_all_body', { n: SNAP.done.length }), () => doneOp('recheck_all'));
 }
-function confirmRetryAll() {
-  confirmModal(t('retry_all_title'), t('retry_all_body'), () => doneOp('retry_all'));
+function confirmRetryAll() { api('/api/retry_scan', {}); }
+function retrySelected() {
+  if (!SELECTED.size) return;
+  api('/api/retry_scan', { ids: [...SELECTED] });
+}
+// "other" is the only kind worth retrying blindly; the rest are opt-in because
+// they fail the same way every time unless a cookie or the source changed.
+function openRetryPrompt(r) {
+  const rows = r.categories.map(c =>
+    `<label style="display:block;margin:3px 0"><input type="checkbox" class="retry-cat" value="${esc(c.key)}"`
+    + (c.key === 'other' ? ' checked' : '') + `> ${esc(t('err_cat_' + c.key))} — ${c.count}</label>`).join('');
+  confirmModal(t('retry_select_title'),
+    `<div style="margin-bottom:6px">${esc(t('retry_select_body', { total: r.total }))}</div>${rows}`,
+    () => {
+      const cats = [...document.querySelectorAll('.retry-cat:checked')].map(e => e.value);
+      api('/api/retry_confirm', { token: r.token, categories: cats });
+    }, t('retry_all_title'));
 }
 async function resCheckAll() {
   const s = await (await fetch('/api/settings')).json();

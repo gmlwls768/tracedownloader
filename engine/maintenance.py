@@ -674,20 +674,84 @@ class _MaintenanceMixin:
         self._show_toast(M("auto_recheck_run"))
         self._recheck_all_done()
 
-    def _retry_all_errors_skipped(self):
+    def _retry_all_errors_skipped(self, categories=None):
         with self.lock:
             done_groups = [t for t in self.tasks
                            if t.kind == "group" and t.state == "completed"]
         if not done_groups:
             self._set_done_status(M("no_done_groups"))
-            return
+            return 0
         retried = excluded = 0
         for g in done_groups:
-            r, x = self._retry_errors_skipped(g)
+            r, x = self._retry_errors_skipped(g, categories)
             retried += r; excluded += x
         summary = M("bulk_retry_summary_excluded", retried=retried, excluded=excluded) if excluded \
                   else M("bulk_retry_summary", retried=retried)
         self._set_done_status(summary)
+        # The status line alone is easy to miss — say so out loud as the other
+        # maintenance tools do.
+        self._show_toast(summary)
+        return retried
+
+    def retry_scan(self, ids=None):
+        """Count the failures behind the chosen groups per category and offer
+        them for selection. The actual retry happens in confirm_retry, so the
+        kinds that always fail the same way (private, removed, ...) are opt-in
+        rather than retried on every pass."""
+        with self.lock:
+            if ids:
+                groups = {t.id for t in self.tasks
+                          if t.kind == "group" and t.id in set(ids)}
+            else:
+                groups = {t.id for t in self.tasks
+                          if t.kind == "group" and t.state == "completed"}
+            errors = [t for t in self.tasks
+                      if t.kind == "video" and t.state == "error"
+                      and t.parent_group_id in groups]
+        if not errors:
+            self._retry_prompt = None
+            self._show_toast(M("retry_none_found"))
+            self._request_refresh()
+            return {"started": False}
+        counts = {}
+        for t in errors:
+            key = classify_error(t)
+            counts[key] = counts.get(key, 0) + 1
+        token = secrets.token_hex(8)
+        self._pending_retry[token] = list(groups)
+        while len(self._pending_retry) > 8:
+            self._pending_retry.pop(next(iter(self._pending_retry)))
+        self._retry_prompt = {
+            "token": token,
+            "total": len(errors),
+            "categories": [{"key": k, "count": counts[k]}
+                           for k in ERROR_CATEGORIES if counts.get(k)],
+        }
+        self._request_refresh()
+        return {"started": True}
+
+    def dismiss_retry_prompt(self):
+        self._retry_prompt = None
+        self._request_refresh()
+
+    def confirm_retry(self, token, categories):
+        self._retry_prompt = None
+        gids = self._pending_retry.pop(token, None)
+        if gids is None or not categories:
+            self._request_refresh()
+            return 0
+        with self.lock:
+            groups = [t for t in self.tasks
+                      if t.kind == "group" and t.id in set(gids)]
+        retried = excluded = 0
+        for g in groups:
+            r, x = self._retry_errors_skipped(g, categories)
+            retried += r; excluded += x
+        summary = M("bulk_retry_summary_excluded", retried=retried, excluded=excluded) if excluded \
+                  else M("bulk_retry_summary", retried=retried)
+        self._set_done_status(summary)
+        self._show_toast(summary)
+        return retried
 
     def _redownload_all_done(self):
         with self.lock:

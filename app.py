@@ -220,6 +220,7 @@ class App:
                           "stats": {}, "done_status": "", "output_dir": ""}
         self._handled_missing_token = None   # last missing_prompt already shown
         self._handled_delete_token = None    # last delete_prompt already shown
+        self._handled_retry_token = None     # last retry_prompt already shown
         self.row_meta = {}       # tree item id -> {"id":, "kind":, "url":}
         self.last_toast_id = 0
         self.toast_job = None
@@ -485,6 +486,7 @@ class App:
         self._render()
         self._check_missing_prompt()
         self._check_delete_prompt()
+        self._check_retry_prompt()
 
     def _check_delete_prompt(self):
         # The "delete with files" scan runs async; its file list surfaces in
@@ -500,6 +502,43 @@ class App:
         if self.confirm_with_preview(self.t("delete_files_confirm_title"), body, preview_items,
                                      self.t("delete_confirm_label")):
             self.engine.confirm_delete_files(dp["token"])
+
+    def _check_retry_prompt(self):
+        # Error counts per category arrive in snapshot's retry_prompt; ask which
+        # ones to retry, then hand the chosen keys back to the engine.
+        rp = self.snapshot.get("retry_prompt")
+        if not rp or rp["token"] == self._handled_retry_token:
+            return
+        self._handled_retry_token = rp["token"]
+        self.engine.dismiss_retry_prompt()
+        picked = self.ask_retry_categories(rp)
+        if picked:
+            self.engine.confirm_retry(rp["token"], picked)
+
+    def ask_retry_categories(self, rp):
+        """Checklist of failure kinds. Only "other" starts ticked — the rest
+        fail the same way every time unless a login or the source changed."""
+        win = tk.Toplevel(self.root)
+        win.title(self.t("retry_select_title"))
+        win.transient(self.root); win.grab_set()
+        ttk.Label(win, text=self.t("retry_select_body", total=rp["total"]),
+                  wraplength=420, justify="left").pack(padx=14, pady=(12, 8), anchor="w")
+        vars_by_key = {}
+        for c in rp["categories"]:
+            v = tk.BooleanVar(value=(c["key"] == "other"))
+            vars_by_key[c["key"]] = v
+            ttk.Checkbutton(win, variable=v,
+                            text="%s — %d" % (self.t("err_cat_" + c["key"]), c["count"])
+                            ).pack(padx=20, anchor="w")
+        chosen = []
+        def ok():
+            chosen.extend(k for k, v in vars_by_key.items() if v.get())
+            win.destroy()
+        btns = ttk.Frame(win); btns.pack(pady=12)
+        ttk.Button(btns, text=self.t("modal_cancel"), command=win.destroy).pack(side="left", padx=4)
+        ttk.Button(btns, text=self.t("retry_all_title"), command=ok).pack(side="left", padx=4)
+        win.wait_window()
+        return chosen
 
     def _check_missing_prompt(self):
         # The missing-file scan runs async on the engine; its result surfaces in
@@ -776,7 +815,7 @@ class App:
         m.add_command(label=t("ctx_pause"), command=lambda: self.do_action("pause"))
         m.add_command(label=t("ctx_stop"), command=lambda: self.do_action("stop"))
         m.add_separator()
-        m.add_command(label=t("ctx_retry"), command=lambda: self.do_action("retry"))
+        m.add_command(label=t("ctx_retry"), command=self.retry_selected)
         m.add_command(label=t("ctx_recheck"), command=lambda: self.do_action("recheck"))
         m.add_command(label=t("ctx_fresh"), command=self.confirm_fresh)
         m.add_command(label=t("ctx_res_check"), command=self.confirm_res_check_sel)
@@ -796,6 +835,13 @@ class App:
         m.add_command(label=t("ctx_delete"), command=lambda: self.confirm_delete(False))
         m.add_command(label=t("ctx_delete_files"), command=lambda: self.confirm_delete(True))
         m.tk_popup(event.x_root, event.y_root)
+
+    def retry_selected(self):
+        """Right-click retry: same category picker as the Done-tab button, but
+        scoped to the selected groups."""
+        ids = self.selected_ids()
+        if ids:
+            self.engine.retry_scan(ids)
 
     def do_action(self, action):
         ids = self.selected_ids()
@@ -831,7 +877,7 @@ class App:
 
     def confirm_retry_all(self):
         if self.confirm(self.t("retry_all_title"), self.t("retry_all_body")):
-            self.engine._retry_all_errors_skipped()
+            self.engine.retry_scan()
 
     def confirm_redownload_all(self):
         n = len(self.snapshot.get("done", []))
