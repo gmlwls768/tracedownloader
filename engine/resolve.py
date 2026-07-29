@@ -217,8 +217,15 @@ class _ResolveMixin:
             self._cleanup_cookies_tmp(cookies_tmp)
 
         entries = j.get("entries")
-        if not isinstance(entries, list) or not entries:
-            entries = [j]
+        is_listing = isinstance(entries, list) or j.get("_type") == "playlist"
+        if not entries:
+            # A single-video URL reports no entry list, so it stands in for
+            # itself. A listing page that simply holds nothing right now (an
+            # artist who has posted nothing, or removed everything) must NOT:
+            # treating the listing as its own video creates a child pointing at
+            # the profile page, which maps to no file and is then reported as a
+            # missing file on every check, forever.
+            entries = [] if is_listing else [j]
 
         # Display name for the group: the listing's own title (an artist/profile
         # page gives the artist name, a single video gives its title). Only
@@ -288,7 +295,12 @@ class _ResolveMixin:
                                         if c.state in ("completed","skipped"))
             group.new_count   = len([t for t in new_tasks if t.state == "queued"])
             group.skip_count  = skip_cnt
-            group.state       = _derive_group_state(children)
+            # An empty listing has nothing to download, so it is done rather than
+            # pending — otherwise it would sit in Active forever waiting for
+            # children that are never coming. A later re-check still picks up
+            # anything the artist posts from now on.
+            group.state       = ("completed" if is_listing and not children
+                                 else _derive_group_state(children))
             group.last_message = self._group_progress_message(children)
             # Only bump "last modified" when genuinely new videos were queued, so a
             # re-check that finds nothing new keeps its place in the modified sort.
