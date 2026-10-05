@@ -41,6 +41,35 @@ class _QueueMixin:
             t.state = "queued"
             t.last_message = message
 
+    def _remove_superseded(self, keep, candidates, max_size=None):
+        """Delete the files a redownload was meant to replace.
+
+        --force-overwrites only replaces a file of the same name, and the new
+        one often isn't: a better format arrives in another container, or the
+        title or the uploader's folder was renamed in between. The old file
+        then stays beside the new one, and since the record now points at the
+        new one, nothing ever looks at the old one again.
+
+        Only files carrying the same video id as `keep` are touched. With
+        `max_size`, bigger files are left alone too. Returns the paths removed."""
+        kept = FILE_ID_RE.search(os.path.basename(keep))
+        removed = []
+        for fp in dict.fromkeys(c for c in candidates if c):
+            m = FILE_ID_RE.search(os.path.basename(fp))
+            if not kept or not m or m.group(1) != kept.group(1):
+                continue
+            try:
+                if os.path.realpath(fp) == os.path.realpath(keep):
+                    continue
+                if max_size is not None and os.path.getsize(fp) > max_size:
+                    continue
+                os.remove(fp)
+            except OSError:
+                continue
+            removed.append(fp)
+            print(f"[redownload] removed superseded copy: {fp}")
+        return removed
+
     def _requeue_by_tasks_order(self, new_tasks: list):
         """Drain queue, merge with new_tasks, re-enqueue in self.tasks order."""
         with self._requeue_lock:
@@ -380,9 +409,12 @@ class _QueueMixin:
             else:
                 self._set_video_state(task, "skipped", M("already_downloaded"))
         elif proc.returncode == 0:
+            superseded = []
             with self.lock:
                 task.progress_pct = 100.0
                 if dest_path:
+                    if ignore_archive:
+                        superseded = [task.filepath, *getattr(task, "_stale_files", ())]
                     task.filepath = os.path.abspath(dest_path)
                     # Record the size here so the library total is a SUM over the
                     # table rather than a walk of the whole output folder.
@@ -394,6 +426,10 @@ class _QueueMixin:
                 # this video never has to guess it from the URL.
                 if real_id and not task.extractor_id:
                     task.extractor_id = real_id
+            if superseded and task.size:
+                # Never at the cost of a bigger file: if this run came back
+                # degraded, the old copy is the better one and stays.
+                self._remove_superseded(task.filepath, superseded, max_size=task.size)
             self._set_video_state(task, "completed", M("video_completed"))
             self._register_filepath(task)
             self._on_video_completed(task)
@@ -408,6 +444,7 @@ class _QueueMixin:
             # resuming a redownload isn't blocked by it.
             with self.lock:
                 task._ignore_archive = False
+                task._stale_files = ()
         if task.state in ("completed","error","skipped","paused"):
             try:
                 self.db.upsert_video(task.to_video_dict())

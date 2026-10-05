@@ -70,7 +70,13 @@ class _MaintenanceMixin:
         self._request_refresh()
 
     def _scan_id_files(self, base, progress_key=None, video_only=True):
-        """One os.walk over the output folder -> {video id: file path}.
+        """{video id: file path} — for the tools that only need to know that a
+        video has a file, or where one of them is."""
+        return {vid: fps[-1] for vid, fps in
+                self._scan_id_file_lists(base, progress_key, video_only).items()}
+
+    def _scan_id_file_lists(self, base, progress_key=None, video_only=True):
+        """One os.walk over the output folder -> {video id: [file paths]}.
 
         Every maintenance tool needs the same map and the walk is the expensive
         part on a networked library, so the shape lives here and callers only
@@ -78,7 +84,7 @@ class _MaintenanceMixin:
         rather than descended into: an @eaDir is one empty directory per media
         file, so on a large NAS they dominate the walk while yielding nothing,
         and #recycle would otherwise report deleted files as still present."""
-        id_file, scanned = {}, 0
+        id_files, scanned = {}, 0
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
             scanned += 1
@@ -89,8 +95,8 @@ class _MaintenanceMixin:
                     continue
                 m = RES_FILE_ID_RE.search(fn)
                 if m:
-                    id_file[m.group(1)] = os.path.join(dirpath, fn)
-        return id_file
+                    id_files.setdefault(m.group(1), []).append(os.path.join(dirpath, fn))
+        return id_files
 
     def size_scan(self):
         """Measure the library's total size. Explicit action only.
@@ -151,25 +157,33 @@ class _MaintenanceMixin:
                                  log_tag, measure, is_low, report_every):
         """Shared body of the resolution and size checks.
 
-        One folder scan, match each target to its file, then measure every match
-        in parallel and keep the ones under the threshold. A file that can't be
-        read counts as under it — either way the video has to be fetched again.
-        Only the measurement and the labels differ between the two checks.
+        One folder scan, match each target to its files, then measure every
+        match in parallel and keep the videos under the threshold. A file that
+        can't be read counts as under it — either way the video has to be
+        fetched again. Only the measurement and the labels differ between the
+        two checks.
 
-        Returns (files checked, [(task, path)] to redownload, targets with no
-        file on disk)."""
-        id_file = {}
+        A video is judged by its best file, because it can have several: a
+        redownload that came back under another name leaves the old file
+        behind (see _remove_superseded). Judging by whichever one the walk
+        happened to reach last would requeue a video that is already fine, or
+        pass one while its low-quality copy sits right beside it.
+
+        Returns (files checked, [(task, paths)] to redownload, [(task, kept
+        path, paths)] of under-threshold copies beside a good one, targets with
+        no file on disk)."""
+        id_files = {}
         try:
-            id_file = self._scan_id_files(base, collecting_key)
+            id_files = self._scan_id_file_lists(base, collecting_key)
         except Exception as e:
             print(f"[{log_tag}] walk: {e}")
 
         pairs, missing = [], 0
         for t in targets:
             vid = self._extract_vid_id(t)
-            fp = id_file.get(vid) if vid else None
-            if fp:
-                pairs.append((t, fp))
+            fps = id_files.get(vid) if vid else None
+            if fps:
+                pairs.extend((t, fp) for fp in fps)
             else:
                 missing += 1
 
@@ -186,38 +200,75 @@ class _MaintenanceMixin:
                 self._set_done_status(M(progress_key, done=d, total=total))
             return t, fp, value
 
-        low = []   # [(task, filepath)]
+        measured = {}   # task id -> (task, [(filepath, value)])
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
             for t, fp, value in ex.map(measure_one, pairs):
-                if is_low(value):
-                    low.append((t, fp))
-        return total, low, missing
+                measured.setdefault(t.id, (t, []))[1].append((fp, value))
+
+        low, stale = [], []
+        for t, files in measured.values():
+            good = [(value, fp) for fp, value in files if not is_low(value)]
+            if not good:
+                low.append((t, [fp for fp, _value in files]))
+                continue
+            # Unreadable files are left out: they weren't shown to be worse.
+            under = [fp for fp, value in files if value is not None and is_low(value)]
+            if under:
+                stale.append((t, max(good)[1], under))
+        return total, low, stale, missing
+
+    def _remove_stale_copies(self, stale):
+        """Remove what _collect_below_threshold found beside a good file, and
+        re-point any record that named one of them. Returns the count."""
+        count, repointed = 0, []
+        for t, keep, under in stale:
+            removed = self._remove_superseded(keep, under)
+            count += len(removed)
+            if removed and t.filepath and not os.path.isfile(t.filepath):
+                with self.lock:
+                    t.filepath = keep
+                repointed.append((keep, t.id))
+        if repointed:
+            try:
+                self.db.set_filepaths(repointed)
+            except Exception as e:
+                print(f"[stale_copies] save failed: {e}")
+        return count
 
     def _res_check_worker(self, targets, base, threshold):
-        total, low, missing = self._collect_below_threshold(
+        total, low, stale, missing = self._collect_below_threshold(
             targets, base,
             collecting_key="res_check_collecting", progress_key="res_check_progress",
             log_tag="res_filter", measure=self._probe_min_side,
             is_low=lambda side: side is None or side < threshold,
             report_every=25)
+        removed = self._remove_stale_copies(stale)
         if low:
             self._apply_res_redownload(low)
-        summary = (M("res_check_summary_missing", total=total, redownload=len(low), missing=missing)
-                   if missing else M("res_check_summary", total=total, redownload=len(low)))
+        if removed:
+            summary = M("res_check_summary_removed", total=total, redownload=len(low),
+                        removed=removed, missing=missing)
+        else:
+            summary = (M("res_check_summary_missing", total=total, redownload=len(low), missing=missing)
+                       if missing else M("res_check_summary", total=total, redownload=len(low)))
         self._set_done_status(summary)
         self._show_toast(summary)
 
     def _apply_res_redownload(self, low, msg=None):
         """Reset below-threshold videos for re-download (clears history, marks
-        them to bypass the download archive, re-queues). Files aren't deleted —
-        yt-dlp --force-overwrites replaces them."""
+        them to bypass the download archive, re-queues). `low` is [(task,
+        paths)]: the files on disk the download is to replace. yt-dlp
+        --force-overwrites replaces the one it lands on; the rest are removed
+        once it has succeeded (see _run_download)."""
         if msg is None:
             msg = M("resolution_low_requeue")
-        low = [t for t, _fp in low]
+        stale_files = {t.id: fps or () for t, fps in low}
+        low = [t for t, _fps in low]
         gids = set()
         with self.lock:
             self._mark_for_redownload(low, msg)
             for t in low:
+                t._stale_files = stale_files[t.id]
                 if t.parent_group_id:
                     gids.add(t.parent_group_id)
             # Move completed groups back to active, bypassing the completed-state guard.
@@ -270,19 +321,24 @@ class _MaintenanceMixin:
             except Exception:
                 return None
 
-        total, low, missing = self._collect_below_threshold(
+        total, low, stale, missing = self._collect_below_threshold(
             targets, base,
             collecting_key="size_check_collecting", progress_key="size_check_progress",
             log_tag="size_filter", measure=size_of,
             is_low=lambda size: size is None or size <= threshold,
             report_every=200)
+        removed = self._remove_stale_copies(stale)
         if low:
             self._apply_res_redownload(low, msg=M("size_low_requeue"))
         threshold_mb = threshold // (1024 * 1024)
-        summary = (M("size_check_summary_missing", total=total, redownload=len(low),
-                     threshold_mb=threshold_mb, missing=missing)
-                   if missing else
-                   M("size_check_summary", total=total, redownload=len(low), threshold_mb=threshold_mb))
+        if removed:
+            summary = M("size_check_summary_removed", total=total, redownload=len(low),
+                        removed=removed, missing=missing)
+        else:
+            summary = (M("size_check_summary_missing", total=total, redownload=len(low),
+                         threshold_mb=threshold_mb, missing=missing)
+                       if missing else
+                       M("size_check_summary", total=total, redownload=len(low), threshold_mb=threshold_mb))
         self._set_done_status(summary)
         self._show_toast(summary)
 
