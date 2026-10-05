@@ -74,6 +74,7 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
         self._cfg_site_output_folders = self._parse_site_folders(
             self.db.get_meta("site_output_folders", ""))
         self._cfg_auto_update_tools   = self.db.get_bool("auto_update_tools", True)
+        self._cfg_group_one_folder    = self.db.get_bool("group_one_folder", False)
         self._cfg_recheck_days        = self.db.get_int("recheck_interval_days", 0)
         self._autosave_interval  = (self._cfg_autosave_min * 60
                                     if self._cfg_autosave_min > 0 else AUTOSAVE_INTERVAL)
@@ -236,11 +237,16 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
             if ok:
                 self._show_toast(M("autosave_done"))
 
-    def _output_template(self, url="", staging=False):
+    def _output_template(self, url="", staging=False, folder=None):
         d = self._resolve_output_base(url)
         if staging:
             d = os.path.join(d, REDOWNLOAD_DIR)
-        return OUTPUT_TEMPLATE_TPL.replace("{dir}", d)
+        tpl = OUTPUT_TEMPLATE_TPL.replace("{dir}", d)
+        if folder:
+            # A fixed folder in place of the uploader's name ("%" is the
+            # template's own escape character).
+            tpl = tpl.replace("%(uploader)s", folder.replace("%", "%%"), 1)
+        return tpl
 
     def _ephemeral_video_template(self, url=""):
         d = self._resolve_output_base(url)

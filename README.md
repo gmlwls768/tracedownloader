@@ -14,7 +14,7 @@ Two front ends share the same engine:
   Linux, other platforms run it from source).
 
 ![state](https://img.shields.io/badge/status-active-brightgreen)
-![version](https://img.shields.io/badge/version-1.2.7-blue)
+![version](https://img.shields.io/badge/version-1.2.8-blue)
 
 ![Windows app — Active tab with an expanded playlist group](docs/windows-active.png)
 
@@ -148,6 +148,7 @@ folder next to `engine/`, or have them on your `PATH`.
 | Gallery folder name format | Template for gallery folder names, e.g. `[{artist}] {title} ({id})` |
 | Cookies | A cookies.txt (Netscape format), sent to both yt-dlp and gallery-dl |
 | Resolution / size thresholds | Used by the "check resolution" / "check size" maintenance tools |
+| Keep each tracked group in one folder | Off by default: each video goes to a folder named after its uploader. On: a group's videos stay in one folder even when the uploader is renamed or a video is hosted elsewhere |
 | Keep tools updated automatically | Periodic yt-dlp/gallery-dl/ffmpeg auto-update, plus a manual "check now" |
 | Language | English or Korean |
 
@@ -389,6 +390,7 @@ Windows/macOS에서도 같은 서버를 소스로 실행할 수 있습니다 —
 | 갤러리 폴더명 형식 | 예: `[{artist}] {title} ({id})` |
 | 쿠키 | cookies.txt(Netscape 형식), yt-dlp·gallery-dl 양쪽에 전달 |
 | 해상도/용량 기준 | "해상도 검사"/"용량 검사" 도구가 사용하는 기준값 |
+| 추적 그룹마다 한 폴더에 저장 | 기본은 꺼짐: 영상마다 업로더 이름 폴더로 저장. 켜면 업로더 이름이 바뀌거나 다른 곳에 올라간 영상이어도 그룹의 영상이 한 폴더에 모임 |
 | 자동 업데이트 | yt-dlp/gallery-dl 주기적 자동 업데이트 + 수동 "지금 확인" |
 | 언어 | 영어 또는 한국어 |
 

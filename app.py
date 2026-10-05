@@ -1039,6 +1039,8 @@ class App:
         add("", ttk.Checkbutton(frm, text=t("s_small_first"), variable=small_var))
         hp_var = tk.BooleanVar(value=s["high_progress_first"])
         add("", ttk.Checkbutton(frm, text=t("s_hp_first"), variable=hp_var))
+        onefolder_var = tk.BooleanVar(value=s["group_one_folder"])
+        add("", ttk.Checkbutton(frm, text=t("s_group_one_folder"), variable=onefolder_var))
 
         autoupdate_var = tk.BooleanVar(value=s["auto_update_tools"])
         autoupdate_frame = ttk.Frame(frm)
@@ -1141,6 +1143,7 @@ class App:
                 "save_on_add": saveonadd_var.get(),
                 "small_group_first": small_var.get(),
                 "high_progress_first": hp_var.get(),
+                "group_one_folder": onefolder_var.get(),
                 "auto_update_tools": autoupdate_var.get(),
                 "font_scale": font_scale,
                 "gallery_folder_template": gallery_var.get(),

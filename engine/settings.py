@@ -29,6 +29,7 @@ class _SettingsMixin:
             "persist_patterns":     "\n".join(self._cfg_persist_patterns),
             "site_output_folders":  "\n".join(f"{p} => {f}" for p, f in self._cfg_site_output_folders),
             "auto_update_tools":    self._cfg_auto_update_tools,
+            "group_one_folder":     self._cfg_group_one_folder,
             "cookies_status":       self._cookies_status(),
             "tools":                self._tool_info(),
         }
@@ -128,6 +129,7 @@ class _SettingsMixin:
         if "site_output_folders" in s:
             self._cfg_site_output_folders = self._parse_site_folders(s.get("site_output_folders"))
         self._cfg_auto_update_tools   = bool(s.get("auto_update_tools", self._cfg_auto_update_tools))
+        self._cfg_group_one_folder    = bool(s.get("group_one_folder", self._cfg_group_one_folder))
         self._autosave_interval  = (self._cfg_autosave_min * 60
                                     if self._cfg_autosave_min > 0 else AUTOSAVE_INTERVAL)
         self.db.set_meta("autostart",           "1" if self._cfg_autostart else "0")
@@ -146,6 +148,7 @@ class _SettingsMixin:
         self.db.set_meta("site_output_folders",
                          "\n".join(f"{p} => {f}" for p, f in self._cfg_site_output_folders))
         self.db.set_meta("auto_update_tools",   "1" if self._cfg_auto_update_tools else "0")
+        self.db.set_meta("group_one_folder",    "1" if self._cfg_group_one_folder else "0")
         self._save_cookies(s)
         self._request_refresh()
 

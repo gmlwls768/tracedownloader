@@ -300,6 +300,7 @@ en: {
   s_saveonadd: 'Autosave right after adding a group',
   s_small_first: 'Download smaller groups first',
   s_hp_first: 'Download groups closest to finished first',
+  s_group_one_folder: 'Keep each tracked group in one folder (even when its uploader is renamed or a video is hosted elsewhere)',
   s_font: 'Font size',
   font_xs: 'Extra small', font_small: 'Small', font_normal: 'Normal', font_large: 'Large', font_xl: 'Extra large',
   s_persist_label: 'Track permanently (database)',
@@ -514,6 +515,7 @@ ko: {
   s_saveonadd: '그룹 추가 시 즉시 자동 저장',
   s_small_first: '작은 그룹 우선 다운로드',
   s_hp_first: '진행률 높은 그룹 우선',
+  s_group_one_folder: '추적 그룹마다 한 폴더에 저장 (업로더 이름이 바뀌거나 다른 곳에 올라간 영상이어도)',
   s_font: '글자 크기',
   font_xs: '아주 작게', font_small: '작게', font_normal: '보통', font_large: '크게', font_xl: '아주 크게',
   s_persist_label: '영구 추적할 사이트 패턴 (DB 저장)',
@@ -1344,6 +1346,7 @@ async function openSettings() {
     <div class="frow"><label><input type="checkbox" id="s-saveonadd" ${s.save_on_add ? 'checked' : ''}> ${esc(t('s_saveonadd'))}</label></div>
     <div class="frow"><label><input type="checkbox" id="s-small" ${s.small_group_first ? 'checked' : ''}> ${esc(t('s_small_first'))}</label></div>
     <div class="frow"><label><input type="checkbox" id="s-hp" ${s.high_progress_first ? 'checked' : ''}> ${esc(t('s_hp_first'))}</label></div>
+    <div class="frow"><label><input type="checkbox" id="s-onefolder" ${s.group_one_folder ? 'checked' : ''}> ${esc(t('s_group_one_folder'))}</label></div>
     <div class="frow"><label><input type="checkbox" id="s-autoupdate" ${s.auto_update_tools ? 'checked' : ''}> ${esc(t('s_auto_update'))}</label>
       <button type="button" onclick="checkToolUpdatesNow()">${esc(t('s_check_updates_now'))}</button></div>
     <div class="frow"><label>${esc(t('s_app_version'))}</label>
@@ -1390,6 +1393,7 @@ async function saveSettings() {
     save_on_add:         $('s-saveonadd').checked,
     small_group_first:   $('s-small').checked,
     high_progress_first: $('s-hp').checked,
+    group_one_folder:    $('s-onefolder').checked,
     auto_update_tools:   $('s-autoupdate').checked,
     font_scale:          +$('s-font').value,
     gallery_folder_template: $('s-gallery-tpl').value,

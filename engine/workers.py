@@ -94,6 +94,62 @@ class _QueueMixin:
             print(f"[redownload] kept the larger existing file: {final}")
         return final, landed
 
+    def _group_folder(self, task):
+        """The one folder this video's group keeps its files in, or None to
+        let the uploader's name decide.
+
+        The videos of one profile don't all report the same uploader name: it
+        gets renamed over the years, and a video hosted elsewhere reports that
+        site's uploader instead. Each difference used to start another folder
+        for the same profile. With the setting on, a group stays in the folder
+        most of its files are already in; one with no files yet takes the
+        folder of its first download (see _adopt_group_folder)."""
+        if not self._cfg_group_one_folder:
+            return None
+        with self.lock:
+            grp = next((t for t in self.tasks
+                        if t.id == task.parent_group_id and t.kind == "group"), None)
+            if grp is None or grp.folder:
+                return grp.folder if grp else None
+            paths = [t.filepath for t in self.tasks
+                     if t.kind == "video" and t.parent_group_id == grp.id and t.filepath]
+        base = os.path.realpath(self._resolve_output_base(task.url))
+        in_base, counts = {}, {}
+        for fp in paths:
+            folder = os.path.dirname(fp)
+            parent = os.path.dirname(folder)
+            if parent not in in_base:
+                in_base[parent] = os.path.realpath(parent) == base
+            if in_base[parent]:
+                name = os.path.basename(folder)
+                counts[name] = counts.get(name, 0) + 1
+        if not counts:
+            return None
+        return self._set_group_folder(grp, max(counts, key=counts.get))
+
+    def _set_group_folder(self, grp, folder):
+        with self.lock:
+            if not grp.folder:
+                grp.folder = folder
+            folder = grp.folder
+        try:
+            self.db.upsert_group(grp.to_group_dict())
+        except Exception as e:
+            print(f"[group folder] save failed: {e}")
+        return folder
+
+    def _adopt_group_folder(self, task):
+        """A group with no folder yet takes the one its first download went to."""
+        with self.lock:
+            grp = next((t for t in self.tasks
+                        if t.id == task.parent_group_id and t.kind == "group"), None)
+        folder = os.path.dirname(task.filepath or "")
+        if (grp is None or grp.folder or not folder
+                or os.path.realpath(os.path.dirname(folder))
+                != os.path.realpath(self._resolve_output_base(task.url))):
+            return
+        self._set_group_folder(grp, os.path.basename(folder))
+
     def _requeue_by_tasks_order(self, new_tasks: list):
         """Drain queue, merge with new_tasks, re-enqueue in self.tasks order."""
         with self._requeue_lock:
@@ -330,10 +386,12 @@ class _QueueMixin:
         # download that finds its file already there simply reports it done.
         # A redownload goes to a staging folder instead and is moved into place
         # once complete (see _land_redownload).
+        group_folder = self._group_folder(task)
         cmd = [YTDLP_BIN, "-c", "-f", "bestvideo+bestaudio/best"]
         if not ignore_archive:
             cmd += ["--download-archive", ARCHIVE_FILE]
-        cmd += ["-o", self._output_template(task.url, staging=ignore_archive),
+        cmd += ["-o", self._output_template(task.url, staging=ignore_archive,
+                                            folder=group_folder),
                 "--no-warnings"]
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]
@@ -457,6 +515,8 @@ class _QueueMixin:
                 # this video never has to guess it from the URL.
                 if real_id and not task.extractor_id:
                     task.extractor_id = real_id
+            if self._cfg_group_one_folder and not group_folder and dest_path:
+                self._adopt_group_folder(task)
             if superseded and task.size:
                 # Never at the cost of a bigger file: if this run came back
                 # degraded, the old copy is the better one and stays.
