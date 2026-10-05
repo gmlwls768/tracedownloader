@@ -57,6 +57,46 @@ tr.vidrow td:first-child { padding-left: 34px; }
 .namecell { max-width: 480px; }
 .msgcell { max-width: 420px; color: var(--fg-dim); font-size: calc(var(--fs) - 1px); }
 .prio { color: var(--yellow); }
+  /* ── 분석 탭 ── */
+  #analytics { flex: 1; overflow: auto; padding: 14px 3.3% 24px; }
+  .an-kpis { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .an-kpi { flex: 1 1 150px; background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 12px 14px; }
+  .an-kpi.clickable { cursor: pointer; }
+  .an-kpi.clickable:hover { border-color: #5a5b68; }
+  .an-kpi .an-k-lbl { font-size: 12px; color: #9a9bab; display: flex; align-items: center; gap: 6px; }
+  .an-kpi .an-k-val { font-size: 26px; font-weight: 600; margin-top: 4px; letter-spacing: -0.5px; }
+  .an-kpi .an-k-sub { font-size: 11px; color: #7f8090; margin-top: 2px; }
+  .an-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+  .an-cards { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+  .an-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+             padding: 14px 16px; flex: 1 1 320px; }
+  .an-card h3 { font-size: 13px; font-weight: 600; color: #c9cad6; margin: 0 0 12px; }
+  .an-donut-wrap { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .an-legend { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+  .an-legend li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .an-legend .an-l-val { color: #9a9bab; margin-left: auto; padding-left: 14px; }
+  .an-bar { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; }
+  .an-bar-lbl { width: 120px; flex: none; color: #c9cad6; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  .an-bar-track { flex: 1; height: 10px; background: #33343e; border-radius: 5px; overflow: hidden; }
+  .an-bar-fill { display: block; height: 100%; background: #2a78d6; border-radius: 5px; }
+  .an-bar-val { width: 62px; text-align: right; flex: none; color: #9a9bab; }
+  .an-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 10px; }
+  .an-seg button { background: transparent; border: none; padding: 4px 12px; font-size: 12px; color: #9a9bab; cursor: pointer; }
+  .an-seg button.on { background: #34415a; color: #fff; }
+  .an-empty { color: #7f8090; font-size: 12px; padding: 8px 0; }
+  .an-bar.an-click { cursor: pointer; border-radius: 4px; }
+  .an-bar.an-click:hover { background: #2b2d36; }
+  .an-items { max-height: 46vh; overflow: auto; margin: 8px 0; }
+  .an-item { padding: 6px 4px; border-bottom: 1px solid #33343e; font-size: 12px; }
+  .an-item a { color: #cfd3e2; text-decoration: none; }
+  .an-item a:hover { text-decoration: underline; }
+  .an-item-sub { color: #7f8090; font-size: 11px; margin-top: 2px; }
+  .an-item-count { color: #9a9bab; font-size: 11px; }
+  .an-flag { font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 6px; }
+  .an-flag.ok { background: #14361b; color: #7fd18b; }
+  .an-flag.bad { background: #3a1c1c; color: #e79a9a; }
 .pbar { display: inline-block; width: 72px; height: 8px; background: #3a3b45; border-radius: 4px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
 .pbar > i { display: block; height: 100%; background: var(--blue); }
 /* ── status bar ── */
@@ -104,6 +144,7 @@ tr.vidrow td:first-child { padding-left: 34px; }
   <button class="tab on" id="tab-active" onclick="setTab('active')"><span class="lbl"></span> (<span id="n-active">0</span>)</button>
   <button class="tab" id="tab-done" onclick="setTab('done')"><span class="lbl"></span> (<span id="n-done">0</span>)</button>
   <button class="tab" id="tab-ephemeral" onclick="setTab('ephemeral')"><span class="lbl"></span> (<span id="n-ephemeral">0</span>)</button>
+  <button class="tab" id="tab-analytics" onclick="setTab('analytics')"><span class="lbl"></span></button>
   <div id="done-controls">
     <span id="done-status"></span>
     <select id="done-sort" onchange="render()">
@@ -121,6 +162,7 @@ tr.vidrow td:first-child { padding-left: 34px; }
   </div>
 </div>
 
+<div id="analytics" style="display:none"></div>
 <div id="tablewrap">
   <table>
     <thead><tr>
@@ -173,6 +215,24 @@ en: {
   request_failed: '⚠ Request failed: {path}',
   kind_gallery: '🖼 Gallery', kind_video: '🎬 Video',
   ctx_start: '▶ Start / Resume', ctx_pause: '⏸ Pause', ctx_stop: '⏹ Stop (group)',
+  tab_analytics: 'Analysis',
+  err_cat_expired: 'Download link expired',
+  err_cat_removed: 'Taken down (policy)', err_cat_network: 'Connection / blocked',
+  err_cat_noformat: 'No playable format', err_cat_filesystem: 'File system',
+  an_skipped_detail: 'Skipped', an_skip_hint: 'Already had the file',
+  an_skip_nofile: 'Archive says yes, file missing',
+  an_items_title: 'Videos in this group', an_items_more: 'showing {shown} of {total}',
+  an_close: 'Close', an_file_ok: 'file present', an_file_missing: 'no file',
+  an_retry_this: '↺ Retry these ({n})',
+  an_retry_confirm: 'Retry {n} video(s) with this error?<br>They are queued again immediately.',
+  an_completed: 'Completed', an_error: 'Errors', an_skipped: 'Skipped', an_other: 'In progress / other',
+  an_size: 'Library size', an_size_unknown: 'Not measured', an_size_hint: 'Click to measure',
+  an_size_files: '{n} files', an_size_run: 'Measure',
+  an_size_confirm: 'Measure the size of every file in the output folder?<br>It is normally a network share, so this reads a lot at once — run it when nothing else heavy is going on.',
+  an_state_mix: 'State breakdown', an_videos: 'videos', an_error_detail: 'Error breakdown',
+  an_by_code: 'By exit code', an_by_kind: 'By kind', an_code: 'Exit code {code}',
+  an_click_detail: 'Click for detail', an_no_errors: 'No errors', an_no_data: 'No data',
+  an_loading: 'Loading…',
   ctx_retry: '↺ Retry errors', ctx_recheck: '🔄 Re-check (find new videos)',
   retry_select_title: '↺ Retry errors',
   retry_select_body: 'Pick which failures to retry ({total} in total). Only the temporary ones are ticked — the rest fail the same way every time unless something changed.',
@@ -366,6 +426,24 @@ ko: {
   request_failed: '⚠ 요청 실패: {path}',
   kind_gallery: '🖼 갤러리', kind_video: '🎬 영상',
   ctx_start: '▶ 시작 / 재개', ctx_pause: '⏸ 일시정지', ctx_stop: '⏹ 정지 (그룹)',
+  tab_analytics: '분석',
+  err_cat_expired: '다운로드 주소 만료',
+  err_cat_removed: '정책 위반 삭제', err_cat_network: '연결 실패 · 차단',
+  err_cat_noformat: '재생 가능 형식 없음', err_cat_filesystem: '파일 시스템',
+  an_skipped_detail: '건너뜀', an_skip_hint: '이미 파일이 있어 안 받음',
+  an_skip_nofile: '아카이브엔 있는데 파일 없음',
+  an_items_title: '해당 영상 목록', an_items_more: '{total}건 중 {shown}건 표시',
+  an_close: '닫기', an_file_ok: '파일 있음', an_file_missing: '파일 없음',
+  an_retry_this: '↺ 이 오류만 재시도 ({n})',
+  an_retry_confirm: '이 오류가 난 영상 {n}개를 다시 시도합니까?<br>바로 다시 큐에 들어갑니다.',
+  an_completed: '완료', an_error: '오류', an_skipped: '건너뜀', an_other: '진행 중 · 기타',
+  an_size: '라이브러리 용량', an_size_unknown: '미측정', an_size_hint: '눌러서 측정',
+  an_size_files: '파일 {n}개', an_size_run: '측정',
+  an_size_confirm: '출력 폴더의 모든 파일 용량을 측정합니까?<br>보통 네트워크 공유라 한 번에 많이 읽습니다 — 다른 무거운 작업이 없을 때 돌리세요.',
+  an_state_mix: '상태 구성', an_videos: '개 영상', an_error_detail: '오류 상세',
+  an_by_code: '오류 번호별', an_by_kind: '유형별', an_code: '오류 {code}번',
+  an_click_detail: '눌러서 상세', an_no_errors: '오류 없음', an_no_data: '데이터 없음',
+  an_loading: '불러오는 중…',
   ctx_retry: '↺ 오류 재시도', ctx_recheck: '🔄 재확인 (새 영상 확인)',
   retry_select_title: '↺ 오류 재시도',
   retry_select_body: '다시 시도할 오류를 고르세요 (총 {total}개). 일시적인 것만 체크되어 있습니다 — 나머지는 상황이 바뀌지 않는 한 매번 같은 이유로 실패합니다.',
@@ -601,6 +679,7 @@ function applyStaticText() {
   $('tab-done').querySelector('.lbl').textContent = t('tab_done');
   $('tab-ephemeral').querySelector('.lbl').textContent = t('tab_ephemeral');
   $('tab-ephemeral').title = t('tab_ephemeral_title');
+  $('tab-analytics').querySelector('.lbl').textContent = t('tab_analytics');
   $('opt-sort-modified').textContent = t('sort_modified');
   $('opt-sort-created').textContent = t('sort_created');
   $('opt-sort-name').textContent = t('sort_name');
@@ -767,7 +846,13 @@ function setTab(tab) {
   $('tab-active').classList.toggle('on', tab === 'active');
   $('tab-done').classList.toggle('on', tab === 'done');
   $('tab-ephemeral').classList.toggle('on', tab === 'ephemeral');
+  $('tab-analytics').classList.toggle('on', tab === 'analytics');
   $('done-controls').style.display = tab === 'done' ? 'flex' : 'none';
+  // 분석은 표가 아니라 자체 패널을 쓴다.
+  const an = tab === 'analytics';
+  $('analytics').style.display = an ? 'block' : 'none';
+  $('tablewrap').style.display = an ? 'none' : '';
+  if (an) { renderAnalytics(); loadAnalytics(); }
   render();
 }
 function toggleAsc() {
@@ -999,6 +1084,160 @@ async function confirmSizeCheckSel() {
   confirmModal(t('done_size_check'), t('size_check_sel_body', { n: ids.length, size: s.size_filter_mb }), () => api('/api/size_check', { ids }));
 }
 async function doneOp(op) { await api('/api/done_ops', { op }); }
+
+// ───────── 분석 탭 ─────────
+// 상태 색은 예약 팔레트 고정값. 색만으로 뜻이 전달되지 않도록 legend/KPI 모두
+// 이름을 함께 적는다.
+const AN_COLOR = { completed: '#0ca30c', error: '#d03b3b', skipped: '#fab219', other: '#6b6c7a' };
+let AN = null;             // 마지막으로 받아온 분석 데이터
+let AN_ERRMODE = 'code';   // 'code' | 'category'
+
+function fmtNum(n) { return (n || 0).toLocaleString(); }
+function fmtBytes(b) {
+  if (b === null || b === undefined) return null;
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let v = b, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v >= 100 || i === 0 ? 0 : 1) + ' ' + u[i];
+}
+
+async function loadAnalytics() {
+  const r = await fetch('/api/analytics');
+  if (!r.ok) { toast(t('request_failed', { path: '/api/analytics' })); return; }
+  AN = await r.json();
+  renderAnalytics();
+}
+
+function donutSvg(segs) {
+  const size = 168, thick = 24, r = (size - thick) / 2, c = size / 2;
+  const C = 2 * Math.PI * r;
+  const total = segs.reduce((s, x) => s + x.value, 0);
+  if (!total) return `<div class="an-empty">${esc(t('an_no_data'))}</div>`;
+  let off = 0, out = '';
+  for (const sg of segs) {
+    const frac = sg.value / total;
+    // 인접 채움끼리 붙지 않게 2px 표면 간격을 둔다. 단 간격보다 얇은 조각은
+    // 그대로 빼면 사라져 버리므로(예: 8만 건 중 25건), 0이 아닌 값은 최소
+    // 1px 을 남겨 존재 자체는 보이게 한다 — 크기를 부풀리지는 않는다.
+    const arc = C * frac;
+    const len = arc > 3 ? arc - 2 : (sg.value > 0 ? Math.max(arc, 1) : 0);
+    out += `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${sg.color}"`
+         + ` stroke-width="${thick}" stroke-dasharray="${len} ${C - len}"`
+         + ` stroke-dashoffset="${-off}" transform="rotate(-90 ${c} ${c})">`
+         + `<title>${esc(sg.label)}: ${fmtNum(sg.value)} (${(frac * 100).toFixed(1)}%)</title></circle>`;
+    off += C * frac;
+  }
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img"`
+       + ` aria-label="${esc(t('an_state_mix'))}">${out}`
+       + `<text x="${c}" y="${c - 2}" text-anchor="middle" fill="#e8e9f0" font-size="24" font-weight="600">${fmtNum(total)}</text>`
+       + `<text x="${c}" y="${c + 17}" text-anchor="middle" fill="#9a9bab" font-size="11">${esc(t('an_videos'))}</text></svg>`;
+}
+
+function barRows(items, kind) {
+  if (!items.length) return `<div class="an-empty">${esc(t('an_no_errors'))}</div>`;
+  const max = Math.max.apply(null, items.map(i => i.count));
+  return items.map(i =>
+    `<div class="an-bar an-click" onclick="showItems('${kind}','${esc(i.key)}',this)"`
+    + ` title="${esc(i.label)}"><span class="an-bar-lbl">${esc(i.label)}</span>`
+    + `<span class="an-bar-track"><span class="an-bar-fill" style="width:${(i.count / max * 100).toFixed(1)}%"></span></span>`
+    + `<span class="an-bar-val">${fmtNum(i.count)}</span></div>`).join('');
+}
+
+// 막대를 누르면 그 항목에 걸린 영상들을 실제로 보여준다.
+async function showItems(kind, key, row) {
+  const r = await fetch(`/api/analytics_items?kind=${encodeURIComponent(kind)}&key=${encodeURIComponent(key)}`);
+  if (!r.ok) { toast(t('request_failed', { path: '/api/analytics_items' })); return; }
+  const d = await r.json();
+  const rows = d.items.map(it => {
+    const flag = it.has_file === null ? ''
+      : `<span class="an-flag ${it.has_file ? 'ok' : 'bad'}">${esc(it.has_file ? t('an_file_ok') : t('an_file_missing'))}</span>`;
+    return `<div class="an-item"><a href="${esc(it.url)}" target="_blank" rel="noreferrer">`
+         + `${esc(it.title || it.url)}</a>${flag}`
+         + `<div class="an-item-sub">${esc(it.group)}</div></div>`;
+  }).join('') || `<div class="an-empty">${esc(t('an_no_data'))}</div>`;
+  // 오류 막대에서 연 경우에만 '이 오류만 재시도'를 붙인다.
+  const retryBtn = (kind === 'error' && d.total)
+    ? `<button onclick="retryThis('${esc(key)}', ${d.total})">${esc(t('an_retry_this', { n: fmtNum(d.total) }))}</button>`
+    : '';
+  showModal(`<h3>${esc(t('an_items_title'))}</h3>`
+    + `<div class="an-item-count">${esc(t('an_items_more', { shown: fmtNum(d.shown), total: fmtNum(d.total) }))}</div>`
+    + `<div class="an-items">${rows}</div>`
+    + `<div class="btns">${retryBtn}<button class="primary" onclick="hideModal()">${esc(t('an_close'))}</button></div>`);
+}
+
+function renderAnalytics() {
+  const el = $('analytics');
+  if (!AN) { el.innerHTML = `<div class="an-empty">${esc(t('an_loading'))}</div>`; return; }
+  const st = AN.by_state || {};
+  const done = st.completed || 0, err = st.error || 0, skip = st.skipped || 0;
+  const other = (AN.videos || 0) - done - err - skip;
+
+  const segs = [
+    { key: 'completed', label: t('an_completed'), value: done, color: AN_COLOR.completed },
+    { key: 'error',     label: t('an_error'),     value: err,  color: AN_COLOR.error },
+    { key: 'skipped',   label: t('an_skipped'),   value: skip, color: AN_COLOR.skipped },
+  ];
+  if (other > 0) segs.push({ key: 'other', label: t('an_other'), value: other, color: AN_COLOR.other });
+
+  const sizeTxt = fmtBytes(AN.size && AN.size.bytes);
+  const kpi = (key, label, val, sub, color, onclick) =>
+    `<div class="an-kpi${onclick ? ' clickable' : ''}"${onclick ? ` onclick="${onclick}"` : ''}>`
+    + `<div class="an-k-lbl">${color ? `<span class="an-dot" style="background:${color}"></span>` : ''}${esc(label)}</div>`
+    + `<div class="an-k-val">${esc(val)}</div>`
+    + `<div class="an-k-sub">${esc(sub || '')}</div></div>`;
+
+  const pct = n => AN.videos ? (n / AN.videos * 100).toFixed(1) + '%' : '—';
+
+  el.innerHTML =
+    `<div class="an-kpis">`
+    + kpi('completed', t('an_completed'), fmtNum(done), pct(done), AN_COLOR.completed)
+    + kpi('error', t('an_error'), fmtNum(err), t('an_click_detail'), AN_COLOR.error, 'focusErrors()')
+    + kpi('skipped', t('an_skipped'), fmtNum(skip), pct(skip), AN_COLOR.skipped)
+    + kpi('size', t('an_size'), sizeTxt || t('an_size_unknown'),
+          sizeTxt ? t('an_size_files', { n: fmtNum(AN.size.files) }) : t('an_size_hint'),
+          null, 'runSizeScan()')
+    + `</div>`
+    + `<div class="an-cards">`
+    + `<div class="an-card"><h3>${esc(t('an_state_mix'))}</h3><div class="an-donut-wrap">${donutSvg(segs)}`
+    + `<ul class="an-legend">` + segs.map(sg =>
+        `<li><span class="an-dot" style="background:${sg.color}"></span>${esc(sg.label)}`
+        + `<span class="an-l-val">${fmtNum(sg.value)}</span></li>`).join('') + `</ul></div></div>`
+    + `<div class="an-card" id="an-errcard"><h3>${esc(t('an_error_detail'))}</h3>`
+    + `<div class="an-seg">`
+    + `<button class="${AN_ERRMODE === 'code' ? 'on' : ''}" onclick="setErrMode('code')">${esc(t('an_by_code'))}</button>`
+    + `<button class="${AN_ERRMODE === 'category' ? 'on' : ''}" onclick="setErrMode('category')">${esc(t('an_by_kind'))}</button>`
+    + `</div>`
+    + barRows(AN_ERRMODE === 'code'
+        ? (AN.errors_by_code || []).map(e => ({ label: t('an_code', { code: e.code }), count: e.count, key: 'code:' + e.code }))
+        : (AN.errors_by_category || []).map(e => ({ label: t('err_cat_' + e.key), count: e.count, key: e.key })), 'error')
+    + `</div>`
+    + `<div class="an-card"><h3>${esc(t('an_skipped_detail'))}</h3>`
+    + barRows([
+        { label: t('an_skip_hint'), count: skip - (AN.skipped_no_file || 0), key: '' },
+        { label: t('an_skip_nofile'), count: AN.skipped_no_file || 0, key: '' },
+      ].filter(x => x.count > 0), 'skipped')
+    + `</div></div>`;
+}
+
+async function retryThis(key, n) {
+  hideModal();
+  confirmModal(t('retry_all_title'), t('an_retry_confirm', { n: fmtNum(n) }), async () => {
+    await api('/api/retry_by', { kind: 'error', key });
+    loadAnalytics();
+  }, t('retry_all_title'));
+}
+function setErrMode(m) { AN_ERRMODE = m; renderAnalytics(); }
+function focusErrors() {
+  AN_ERRMODE = 'code';
+  renderAnalytics();
+  const c = $('an-errcard');
+  if (c) c.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+async function runSizeScan() {
+  // 출력 폴더가 네트워크 공유라 전수 조회는 부하가 크다 — 확인을 받고 나서만 돈다.
+  confirmModal(t('an_size'), t('an_size_confirm'), async () => {
+    await api('/api/size_scan', {});
+  }, t('an_size_run'));
+}
 
 // ───────── missing-file check (2-step: confirm the scan result before redownloading) ─────────
 function missingCheckAll() {

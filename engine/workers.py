@@ -363,12 +363,33 @@ class _QueueMixin:
         elif task._paused:
             self._set_video_state(task, "paused", M("paused_msg"))
         elif "has already been recorded" in (task.last_message or ""):
-            self._set_video_state(task, "skipped", M("already_downloaded"))
+            # The archive says we have it. If the file really is there, that is
+            # simply "completed" — reporting it as skipped buries the cases that
+            # matter (archive says yes, disk says no) among thousands that are
+            # perfectly fine. One stat, only on this branch.
+            have = task.filepath and os.path.isfile(task.filepath)
+            if have:
+                with self.lock:
+                    task.progress_pct = 100.0
+                    if not task.size:
+                        try:
+                            task.size = os.path.getsize(task.filepath)
+                        except OSError:
+                            pass
+                self._set_video_state(task, "completed", M("video_completed"))
+            else:
+                self._set_video_state(task, "skipped", M("already_downloaded"))
         elif proc.returncode == 0:
             with self.lock:
                 task.progress_pct = 100.0
                 if dest_path:
                     task.filepath = os.path.abspath(dest_path)
+                    # Record the size here so the library total is a SUM over the
+                    # table rather than a walk of the whole output folder.
+                    try:
+                        task.size = os.path.getsize(task.filepath)
+                    except OSError:
+                        task.size = None
                 # Put the real archive id on record, so a later redownload of
                 # this video never has to guess it from the URL.
                 if real_id and not task.extractor_id:

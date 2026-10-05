@@ -182,6 +182,24 @@ def missing_dismiss():
     return {"ok": True}
 
 
+@app.get("/api/analytics")
+def analytics():
+    """Library-wide counts for the analysis tab. Derived from in-memory state
+    only — the size figure comes from the cached size scan, never a live walk."""
+    return engine.analytics()
+
+
+@app.get("/api/analytics_items")
+def analytics_items(kind: str = "error", key: str = "", limit: int = 200):
+    """The videos behind one bar of the analysis tab (drill-down)."""
+    return engine.analytics_items(kind, key, max(1, min(1000, limit)))
+
+
+@app.post("/api/size_scan")
+def size_scan():
+    return engine.size_scan()
+
+
 @app.post("/api/retry_scan")
 def retry_scan(body: dict):
     """Count failures per category and offer them for selection; the retry
@@ -193,6 +211,12 @@ def retry_scan(body: dict):
 def retry_confirm(body: dict):
     n = engine.confirm_retry(body.get("token") or "", body.get("categories") or [])
     return {"ok": n > 0, "count": n}
+
+
+@app.post("/api/retry_by")
+def retry_by(body: dict):
+    """Retry one bar of the analysis chart — a single exit code or category."""
+    return engine.retry_by(body.get("kind") or "error", body.get("key") or "")
 
 
 @app.post("/api/retry_dismiss")

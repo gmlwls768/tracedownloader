@@ -156,6 +156,88 @@ class _SettingsMixin:
                 or ql in (t.title or "").lower()
                 or ql in (t.last_message or "").lower())
 
+    def analytics(self):
+        """Library-wide counts for the analysis tab.
+
+        Everything here is derived from state already in memory — no folder
+        walk. Total size is deliberately NOT computed on the fly: the output
+        folder is a network share, and stat-ing every file is exactly the load
+        that has taken the storage down before. It is filled in only by an
+        explicit size scan, and reported as unknown until then."""
+        with self.lock:
+            videos = [t for t in self.tasks if t.kind == "video"]
+            groups = sum(1 for t in self.tasks if t.kind == "group")
+
+        by_state = {}
+        for t in videos:
+            by_state[t.state] = by_state.get(t.state, 0) + 1
+
+        errors = [t for t in videos if t.state == "error"]
+        by_code, by_cat = {}, {}
+        for t in errors:
+            code = _error_exit_code(t)
+            by_code[code] = by_code.get(code, 0) + 1
+            key = classify_error(t)
+            by_cat[key] = by_cat.get(key, 0) + 1
+
+        # 용량은 테이블 합계 — 다운로드마다 기록되므로 항상 최신이고 스캔이 없다.
+        size_bytes, size_files, size_missing = self.db.size_totals()
+
+        return {
+            "videos": len(videos),
+            "groups": groups,
+            "by_state": by_state,
+            # Highest count first — the point of the list is "what fails most".
+            "errors_by_code": sorted(
+                ({"code": c, "count": n} for c, n in by_code.items()),
+                key=lambda d: -d["count"]),
+            "errors_by_category": sorted(
+                ({"key": k, "count": n} for k, n in by_cat.items()),
+                key=lambda d: -d["count"]),
+            "skipped_no_file": sum(1 for t in videos if t.state == "skipped"
+                                   and not (t.filepath and os.path.isfile(t.filepath))),
+            "size": {"bytes": size_bytes, "files": size_files, "missing": size_missing},
+        }
+
+    def analytics_items(self, kind, key="", limit=200):
+        """Which videos sit behind one bar of the analysis tab.
+
+        `kind` is "error" or "skipped"; for errors `key` is either
+        "code:<n>" (the tool's exit code) or a category name. Capped — the
+        point is to see what is in there, not to page through 8,000 rows."""
+        with self.lock:
+            videos = [t for t in self.tasks if t.kind == "video"]
+            gname = {t.id: (t.title or t.url) for t in self.tasks if t.kind == "group"}
+
+        if kind == "skipped":
+            sel = [t for t in videos if t.state == "skipped"]
+        else:
+            sel = [t for t in videos if t.state == "error"]
+            if key.startswith("code:"):
+                try:
+                    want = int(key[5:])
+                except ValueError:
+                    want = 0
+                sel = [t for t in sel if _error_exit_code(t) == want]
+            elif key:
+                sel = [t for t in sel if classify_error(t) == key]
+
+        total = len(sel)
+        items = []
+        for t in sel[:limit]:
+            items.append({
+                "id": t.id,
+                "title": t.title or "",
+                "url": t.url,
+                "group": gname.get(t.parent_group_id, ""),
+                "message": (t.last_message or "")[:300],
+                # Only meaningful for skipped: the archive says we have it, so
+                # whether the file is actually there is the whole question.
+                "has_file": bool(t.filepath and os.path.isfile(t.filepath))
+                            if kind == "skipped" else None,
+            })
+        return {"kind": kind, "key": key, "total": total, "shown": len(items), "items": items}
+
     def snapshot(self, q="", expanded=()):
         """Collapsed groups don't send their children down. While searching,
         every child is scanned to decide a match, but only matching groups

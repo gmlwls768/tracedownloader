@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.5"
 # This app's own GitHub repo, for the in-app "check for updates" feature.
 APP_REPO_URL      = "https://github.com/gmlwls768/tracedownloader"
 APP_RELEASES_API  = "https://api.github.com/repos/gmlwls768/tracedownloader/releases/latest"
@@ -351,6 +351,12 @@ class DB:
         try:
             self._exec("ALTER TABLE videos ADD COLUMN media TEXT DEFAULT ''")
         except sqlite3.OperationalError:
+            pass  # already exists
+        try:
+            # File size at download time. Kept per video so the library total is
+            # a SUM over the table instead of a walk of a network share.
+            self._exec("ALTER TABLE videos ADD COLUMN size INTEGER")
+        except sqlite3.OperationalError:
             pass
         self._exec("""CREATE TABLE IF NOT EXISTS history(
             video_id TEXT PRIMARY KEY, url TEXT, completed_at TEXT)""")
@@ -382,11 +388,12 @@ class DB:
                 """, [{**g, "now": now} for g in groups])
             if videos:
                 c.executemany("""INSERT INTO videos
-                    (id,group_id,url,state,last_message,extractor_id,title,filepath,media,created_at,updated_at)
-                    VALUES(:id,:group_id,:url,:state,:last_message,:extractor_id,:title,:filepath,:media,:now,:now)
+                    (id,group_id,url,state,last_message,extractor_id,title,filepath,media,size,created_at,updated_at)
+                    VALUES(:id,:group_id,:url,:state,:last_message,:extractor_id,:title,:filepath,:media,:size,:now,:now)
                     ON CONFLICT(id) DO UPDATE SET state=excluded.state,
                     last_message=excluded.last_message,
                     extractor_id=COALESCE(excluded.extractor_id, videos.extractor_id),
+                    size=COALESCE(excluded.size, videos.size),
                     title=COALESCE(NULLIF(excluded.title,''), videos.title),
                     filepath=COALESCE(excluded.filepath, videos.filepath),
                     media=excluded.media,
@@ -461,6 +468,34 @@ class DB:
                 raise
         self._run_sync(_bulk)
 
+    def set_sizes(self, pairs):
+        """(size, video_id) 쌍을 한 트랜잭션으로 기록 (용량 스캔 백필용)."""
+        pairs = [p for p in pairs if p[0] is not None]
+        if not pairs:
+            return
+        def _bulk():
+            c = self._conn
+            c.execute("BEGIN")
+            try:
+                c.executemany("UPDATE videos SET size=? WHERE id=?", pairs)
+                c.commit()
+            except Exception:
+                c.rollback()
+                raise
+        self._run_sync(_bulk)
+
+    def size_totals(self):
+        """(합계 바이트, 크기가 기록된 행 수, 아직 기록 없는 완료 행 수).
+
+        전체 폴더를 훑지 않고 테이블에서 바로 계산한다."""
+        def _q():
+            c = self._conn
+            row = c.execute("SELECT COALESCE(SUM(size),0), COUNT(size) FROM videos").fetchone()
+            missing = c.execute("""SELECT COUNT(*) FROM videos
+                                   WHERE state='completed' AND size IS NULL""").fetchone()[0]
+            return int(row[0]), int(row[1]), int(missing)
+        return self._run_sync(_q)
+
     def set_filepaths(self, pairs):
         """Bulk-write (filepath, video_id) pairs in one transaction (backfill)."""
         pairs = [p for p in pairs if p[0] and p[1]]
@@ -517,6 +552,7 @@ class Task:
                  sort_order=0):
         self.url             = url
         self.extractor_id    = extractor_id
+        self.size            = None   # videos: file size in bytes, set on completion
         self.seq             = next(Task._seq_counter)
         self.created_at      = created_at  if created_at  is not None else time.time()
         self.modified_at     = modified_at if modified_at is not None else self.created_at
@@ -556,6 +592,7 @@ class Task:
                     url=self.url, state=self.state,
                     last_message=self.last_message,
                     extractor_id=self.extractor_id,
+                    size=self.size,
                     title=self.title or "",
                     filepath=self.filepath,
                     media=self.media)
@@ -586,6 +623,7 @@ class Task:
                  extractor_id=r["extractor_id"] if "extractor_id" in r.keys() else None)
         t.title = r["title"] if "title" in r.keys() else ""
         t.filepath = r["filepath"] if "filepath" in r.keys() else None
+        t.size = r["size"] if "size" in r.keys() else None
         t.media = r["media"] if "media" in r.keys() and r["media"] else ""
         return t
 
@@ -615,7 +653,8 @@ def _is_permanent_error(task):
 # the only group worth retrying blindly — the rest need a cookie, or the source
 # is gone for good, so they are opt-in per retry instead of being retried on
 # every pass. Order matters: the first match wins.
-ERROR_CATEGORIES = ("private", "unavailable", "notfound", "login", "other")
+ERROR_CATEGORIES = ("private", "removed", "unavailable", "expired", "notfound",
+                    "login", "network", "noformat", "filesystem", "other")
 
 
 def _trim_reason(line, limit=200):
@@ -634,19 +673,57 @@ def _trim_reason(line, limit=200):
     return cut.rstrip(" ,.;:") + "…"
 
 
+def _error_exit_code(task):
+    """The tool's exit code behind a failed task, or 0 when there isn't one.
+
+    The message is stored in whichever shape the engine used at the time —
+    "exit_code_reason:{...}", "exit 1 | …", "종료 코드 1 | …" — so both the
+    structured and the older rendered forms are read here."""
+    msg = task.last_message or ""
+    m = re.search(r'"code"\s*:\s*(\d+)', msg)
+    if m:
+        return int(m.group(1))
+    m = re.search(r'(?:exit(?:_code)?|종료 코드)\D{0,3}(\d+)', msg)
+    return int(m.group(1)) if m else 0
+
+
 def classify_error(task):
-    """Which retry category a failed task belongs to."""
+    """Which retry category a failed task belongs to. First match wins.
+
+    The split exists so the retry picker can separate what is worth trying
+    again from what never will be — a takedown and a dropped connection are
+    both "an error", but only one of them can succeed on a second attempt."""
     msg = (task.last_message or "").lower()
     if "private video" in msg:
         return "private"
+    # Policy takedowns name the rule they broke; they are gone for good.
+    if "removed for violating" in msg or "terms of service" in msg:
+        return "removed"
     # "no longer available because the ... account ... has been terminated",
     # and the bare "Video unavailable" it shares a prefix with.
     if "video unavailable" in msg:
         return "unavailable"
     if "http error 404" in msg:
-        return "notfound"
-    if "need login" in msg or "log in" in msg:
+        # Which 404 matters. The page's own metadata 404 means the video is
+        # gone. A 404 while fetching the *media* means only that the download
+        # URL had expired between listing and download — the video is still
+        # there and a retry gets a fresh link, so these are worth retrying.
+        return "expired" if "video data" in msg else "notfound"
+    # Age gates need the same remedy as a login: cookies from a signed-in session.
+    if ("need login" in msg or "log in" in msg or "sign in to confirm" in msg
+            or "confirm your age" in msg):
         return "login"
+    # Transport-level failures — these are the ones a plain retry can fix.
+    if ("connection reset" in msg or "failed to perform" in msg
+            or "timed out" in msg or "timeout" in msg or "cloudflare" in msg
+            or "connection refused" in msg or "temporary failure" in msg
+            or "unable to connect" in msg or "http error 403" in msg):
+        return "network"
+    if "no video formats" in msg or "unplayable" in msg:
+        return "noformat"
+    if ("no such file or directory" in msg or "errno" in msg
+            or "file name too long" in msg or "permission denied" in msg):
+        return "filesystem"
     return "other"
 
 
@@ -729,6 +806,7 @@ __all__ = [
     "_is_permanent_error",
     "ERROR_CATEGORIES",
     "classify_error",
+    "_error_exit_code",
     "_trim_reason",
     "_is_private_error",
     "_managed_bin_path",

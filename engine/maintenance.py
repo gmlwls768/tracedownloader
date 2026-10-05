@@ -92,6 +92,61 @@ class _MaintenanceMixin:
                     id_file[m.group(1)] = os.path.join(dirpath, fn)
         return id_file
 
+    def size_scan(self):
+        """Measure the library's total size. Explicit action only.
+
+        The output folder is normally a network share, and stat-ing every file
+        in it is heavy enough to have taken that storage down before, so this
+        never runs on its own — the analysis tab reads the cached result and
+        shows the size as unknown until someone asks for it."""
+        base = os.path.abspath(self._cfg_output_dir or DEFAULT_OUTPUT_DIR)
+        if not os.path.isdir(base):
+            self._show_toast(M("output_dir_missing", path=base))
+            return {"started": False}
+        self._set_done_status(M("size_scan_running", dirs=0))
+        threading.Thread(target=self._size_scan_worker, args=(base,), daemon=True).start()
+        return {"started": True}
+
+    def _size_scan_worker(self, base):
+        """One walk does both jobs: the folder total, and the per-video sizes
+        that keep it up to date afterwards without ever walking again."""
+        total = files = scanned = 0
+        by_path = {}
+        try:
+            for dirpath, dirnames, filenames in os.walk(base):
+                dirnames[:] = [d for d in dirnames if d not in SCAN_SKIP_DIRS]
+                scanned += 1
+                if scanned % 200 == 0:
+                    self._set_done_status(M("size_scan_running", dirs=scanned))
+                for fn in filenames:
+                    try:
+                        sz = os.path.getsize(os.path.join(dirpath, fn))
+                    except OSError:
+                        continue
+                    total += sz
+                    files += 1
+                    by_path[os.path.join(dirpath, fn)] = sz
+        except Exception as e:
+            self._set_done_status("")
+            self._show_toast(M("folder_scan_failed", error=str(e)))
+            return
+        # Fill in the column for everything already downloaded, so from now on
+        # the total comes from the table and new downloads keep it current.
+        with self.lock:
+            pairs = []
+            for t in self.tasks:
+                if t.kind == "video" and t.filepath and t.filepath in by_path:
+                    t.size = by_path[t.filepath]
+                    pairs.append((t.size, t.id))
+        try:
+            self.db.set_sizes(pairs)
+        except Exception as e:
+            print(f"[size_scan] {e}")
+        self.db.set_meta("library_size", "%d,%d,%d" % (total, files, int(time.time())))
+        self._set_done_status("")
+        self._show_toast(M("size_scan_done", gb="%.1f" % (total / (1024 ** 3)), files=files))
+        self._request_refresh()
+
     def _collect_below_threshold(self, targets, base, collecting_key, progress_key,
                                  log_tag, measure, is_low, report_every):
         """Shared body of the resolution and size checks.
@@ -729,6 +784,40 @@ class _MaintenanceMixin:
         }
         self._request_refresh()
         return {"started": True}
+
+    def retry_by(self, kind, key):
+        """Retry exactly the failures behind one bar of the analysis tab.
+
+        The picker in the Done tab works per category across everything; this
+        is the narrow version — one exit code, or one category, straight from
+        the chart the user is already looking at."""
+        if kind != "error" or not key:
+            return {"retried": 0}
+        with self.lock:
+            errs = [t for t in self.tasks
+                    if t.kind == "video" and t.state == "error"]
+        if key.startswith("code:"):
+            try:
+                want = int(key[5:])
+            except ValueError:
+                return {"retried": 0}
+            targets = [t for t in errs if _error_exit_code(t) == want]
+        else:
+            targets = [t for t in errs if classify_error(t) == key]
+        if not targets:
+            self._show_toast(M("retry_none_found"))
+            return {"retried": 0}
+        self.global_stop.clear()
+        vids = [v for v in (self._extract_vid_id(t) for t in targets) if v]
+        with self.lock:
+            self._mark_for_redownload(targets)
+        self.db.delete_history_many(vids)
+        self._enqueue_tasks(targets)
+        summary = M("bulk_retry_summary", retried=len(targets))
+        self._set_done_status(summary)
+        self._show_toast(summary)
+        self._request_refresh()
+        return {"retried": len(targets)}
 
     def dismiss_retry_prompt(self):
         self._retry_prompt = None
