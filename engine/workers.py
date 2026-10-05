@@ -44,11 +44,11 @@ class _QueueMixin:
     def _remove_superseded(self, keep, candidates, max_size=None):
         """Delete the files a redownload was meant to replace.
 
-        --force-overwrites only replaces a file of the same name, and the new
-        one often isn't: a better format arrives in another container, or the
-        title or the uploader's folder was renamed in between. The old file
-        then stays beside the new one, and since the record now points at the
-        new one, nothing ever looks at the old one again.
+        The new file often has another name than the one it replaces: a better
+        format arrives in another container, or the title or the uploader's
+        folder was renamed in between. Left alone, the old file stays beside
+        the new one, and since the record now points at the new one, nothing
+        ever looks at the old one again.
 
         Only files carrying the same video id as `keep` are touched. With
         `max_size`, bigger files are left alone too. Returns the paths removed."""
@@ -69,6 +69,30 @@ class _QueueMixin:
             removed.append(fp)
             print(f"[redownload] removed superseded copy: {fp}")
         return removed
+
+    def _land_redownload(self, staged):
+        """Move a finished redownload out of its staging folder into place.
+
+        A file already there under the same name gives way only to one at
+        least its size: a site sometimes serves a lesser copy than it did
+        before, and that must not cost the better one. Returns (the path now
+        holding the video, whether the new download is what is there)."""
+        staged = os.path.normpath(staged)
+        base, marker, rel = staged.rpartition(os.sep + REDOWNLOAD_DIR + os.sep)
+        if not marker:
+            return staged, True
+        final = os.path.join(base, rel)
+        try:
+            landed = os.path.getsize(final) <= os.path.getsize(staged)
+        except OSError:
+            landed = True   # nothing in the way
+        if landed:
+            os.makedirs(os.path.dirname(final), exist_ok=True)
+            os.replace(staged, final)
+        else:
+            os.remove(staged)
+            print(f"[redownload] kept the larger existing file: {final}")
+        return final, landed
 
     def _requeue_by_tasks_order(self, new_tasks: list):
         """Drain queue, merge with new_tasks, re-enqueue in self.tasks order."""
@@ -300,11 +324,16 @@ class _QueueMixin:
         # the embedded id, which nothing in the URL reveals. So the archive is
         # left untouched and simply not consulted for this one run.
         ignore_archive = bool(getattr(task, "_ignore_archive", False))
-        cmd = [YTDLP_BIN, "-c", "--force-overwrites",
-               "-f", "bestvideo+bestaudio/best"]
+        # No --force-overwrites, on any path: yt-dlp honours it by deleting the
+        # existing file before it starts downloading, so a download that then
+        # fails or is stopped has destroyed a file it never replaced. A plain
+        # download that finds its file already there simply reports it done.
+        # A redownload goes to a staging folder instead and is moved into place
+        # once complete (see _land_redownload).
+        cmd = [YTDLP_BIN, "-c", "-f", "bestvideo+bestaudio/best"]
         if not ignore_archive:
             cmd += ["--download-archive", ARCHIVE_FILE]
-        cmd += ["-o", self._output_template(task.url),
+        cmd += ["-o", self._output_template(task.url, staging=ignore_archive),
                 "--no-warnings"]
         if cookies_tmp:
             cmd += ["--cookies", cookies_tmp]
@@ -409,7 +438,9 @@ class _QueueMixin:
             else:
                 self._set_video_state(task, "skipped", M("already_downloaded"))
         elif proc.returncode == 0:
-            superseded = []
+            superseded, landed = [], True
+            if dest_path and ignore_archive:
+                dest_path, landed = self._land_redownload(dest_path)
             with self.lock:
                 task.progress_pct = 100.0
                 if dest_path:
@@ -430,7 +461,8 @@ class _QueueMixin:
                 # Never at the cost of a bigger file: if this run came back
                 # degraded, the old copy is the better one and stays.
                 self._remove_superseded(task.filepath, superseded, max_size=task.size)
-            self._set_video_state(task, "completed", M("video_completed"))
+            self._set_video_state(task, "completed", M("video_completed" if landed
+                                                         else "redownload_kept_existing"))
             self._register_filepath(task)
             self._on_video_completed(task)
         else:

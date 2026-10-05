@@ -236,8 +236,10 @@ class Engine(_EphemeralMixin, _ResolveMixin, _QueueMixin, _MaintenanceMixin,
             if ok:
                 self._show_toast(M("autosave_done"))
 
-    def _output_template(self, url=""):
+    def _output_template(self, url="", staging=False):
         d = self._resolve_output_base(url)
+        if staging:
+            d = os.path.join(d, REDOWNLOAD_DIR)
         return OUTPUT_TEMPLATE_TPL.replace("{dir}", d)
 
     def _ephemeral_video_template(self, url=""):

@@ -169,7 +169,9 @@ class _EphemeralMixin:
     def _run_ephemeral_video(self, entry, url):
         self._ephemeral_update(entry, state="downloading", message=M("starting"))
         cookies_tmp = self._cookies_tempcopy()
-        cmd = [YTDLP_BIN, "-c", "--force-overwrites",
+        # No --force-overwrites: it deletes an existing file before the download
+        # starts, which loses it if the download then fails (see _run_download).
+        cmd = [YTDLP_BIN, "-c",
                "-f", "bestvideo+bestaudio/best",
                "-o", self._ephemeral_video_template(url), "--no-warnings"]
         if cookies_tmp:

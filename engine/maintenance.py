@@ -163,11 +163,11 @@ class _MaintenanceMixin:
         fetched again. Only the measurement and the labels differ between the
         two checks.
 
-        A video is judged by its best file, because it can have several: a
-        redownload that came back under another name leaves the old file
-        behind (see _remove_superseded). Judging by whichever one the walk
-        happened to reach last would requeue a video that is already fine, or
-        pass one while its low-quality copy sits right beside it.
+        A video is judged by its best file, because it can have several: an
+        older copy under another name, container or folder (see
+        _remove_superseded). Judging by whichever one the walk happened to
+        reach last would requeue a video that is already fine, or pass one
+        while its low-quality copy sits right beside it.
 
         Returns (files checked, [(task, paths)] to redownload, [(task, kept
         path, paths)] of under-threshold copies beside a good one, targets with
@@ -257,9 +257,8 @@ class _MaintenanceMixin:
     def _apply_res_redownload(self, low, msg=None):
         """Reset below-threshold videos for re-download (clears history, marks
         them to bypass the download archive, re-queues). `low` is [(task,
-        paths)]: the files on disk the download is to replace. yt-dlp
-        --force-overwrites replaces the one it lands on; the rest are removed
-        once it has succeeded (see _run_download)."""
+        paths)]: the files on disk the download is to replace. None of them
+        is touched until it has succeeded (see _run_download)."""
         if msg is None:
             msg = M("resolution_low_requeue")
         stale_files = {t.id: fps or () for t, fps in low}

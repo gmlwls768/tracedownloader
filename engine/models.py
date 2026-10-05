@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 UTC = timezone.utc
 
-APP_VERSION = "1.2.6"
+APP_VERSION = "1.2.7"
 # This app's own GitHub repo, for the in-app "check for updates" feature.
 APP_REPO_URL      = "https://github.com/gmlwls768/tracedownloader"
 APP_RELEASES_API  = "https://api.github.com/repos/gmlwls768/tracedownloader/releases/latest"
@@ -219,10 +219,17 @@ FILE_ID_RE      = re.compile(r'\[([A-Za-z0-9_-]+)\](?:\.f\d+)?\.[^.]+$')
 YTDLP_ID_LINE_RE = re.compile(
     r'^\[(?!download\]|info\]|debug\])[a-z][a-z0-9_:.+-]*\]\s+([A-Za-z0-9_-]+):\s')
 VIDEO_FILE_EXTS = {".mp4", ".mkv", ".webm", ".avi", ".mov"}
+# A redownload is fetched into this folder under the output folder, in the
+# same layout, and only moved into place once it is complete. Whatever is
+# already on disk is not touched until then, so a redownload that fails or is
+# cut off costs nothing. The folder itself is never removed: another download
+# may be about to write into it.
+REDOWNLOAD_DIR  = ".redownload"
 # Synology metadata / recycle-bin folders under the output dir: they hold no
 # real content (an @eaDir is one empty dir per media file), so every os.walk
-# over the library prunes them instead of descending into them.
-SCAN_SKIP_DIRS  = {"@eaDir", "#recycle"}
+# over the library prunes them instead of descending into them. Redownloads
+# still in flight are not part of the library either.
+SCAN_SKIP_DIRS  = {"@eaDir", "#recycle", REDOWNLOAD_DIR}
 
 UNIT_MULT = {"B":1, "KIB":1024, "MIB":1024**2, "GIB":1024**3, "TIB":1024**4,
              "KB":1000, "MB":1000**2, "GB":1000**3, "TB":1000**4}
@@ -785,6 +792,7 @@ __all__ = [
     "OUTPUT_TEMPLATE_TPL",
     "PART_FILE_RE",
     "PROGRESS_LINE_RE",
+    "REDOWNLOAD_DIR",
     "RES_FILE_ID_RE",
     "SUBPROC_FLAGS",
     "TOOL_PIP_NAMES",
