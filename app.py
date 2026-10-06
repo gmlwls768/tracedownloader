@@ -23,6 +23,7 @@ import threading
 import time
 import tkinter as tk
 import tkinter.font as tkfont
+from tkinter import simpledialog
 import urllib.request
 import webbrowser
 import zipfile
@@ -322,6 +323,8 @@ class App:
         self.btn_asc.pack(side="left", padx=2)
         self.btn_recheck_all = ttk.Button(self.done_controls, command=self.confirm_recheck_all)
         self.btn_recheck_all.pack(side="left", padx=2)
+        ttk.Button(self.done_controls, text="⚙", width=3,
+                   command=self.open_recheck_schedule).pack(side="left")
         self.btn_retry_all = ttk.Button(self.done_controls, command=self.confirm_retry_all)
         self.btn_retry_all.pack(side="left", padx=2)
         self.btn_redownload_all = ttk.Button(self.done_controls, command=self.confirm_redownload_all)
@@ -869,6 +872,18 @@ class App:
         ids = self.selected_ids()
         if ids and self.confirm(self.t("fresh_confirm_title"), self.t("fresh_confirm_body", n=len(ids))):
             self.engine.apply_action(ids, "fresh")
+
+    def open_recheck_schedule(self):
+        """The scheduled re-check interval from Settings, next to the button it belongs to."""
+        s = self.engine.get_settings()
+        days = simpledialog.askinteger(self.t("recheck_sched_title"), self.t("s_recheck_days"),
+                                       initialvalue=s["recheck_interval_days"],
+                                       minvalue=0, maxvalue=365, parent=self.root)
+        if days is None:
+            return
+        s["recheck_interval_days"] = days
+        self.engine.set_settings(s)
+        self.show_toast(self.t("settings_saved_toast"))
 
     def confirm_recheck_all(self):
         n = len(self.snapshot.get("done", []))

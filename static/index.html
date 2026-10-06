@@ -154,6 +154,7 @@ tr.vidrow td:first-child { padding-left: 34px; }
     </select>
     <button onclick="toggleAsc()" id="asc-btn"></button>
     <button id="btn-recheck-all" onclick="confirmRecheckAll()"></button>
+    <button id="btn-recheck-sched" onclick="openRecheckSchedule()">⚙</button>
     <button id="btn-retry-all" onclick="confirmRetryAll()"></button>
     <button id="btn-redownload-all" onclick="confirmRedownloadAll()"></button>
     <button id="btn-res-check-all" onclick="resCheckAll()"></button>
@@ -260,6 +261,7 @@ en: {
   redownload_all_title: 'Redownload all',
   redownload_all_body: 'Redownload all {n} completed group(s) from scratch?',
   recheck_all_title: '🔄 Re-check all',
+  recheck_sched_title: '⏱ Scheduled re-check',
   recheck_all_body: 'Check all {n} completed group(s) for newly added videos?',
   retry_all_title: '↺ Retry errors',
   retry_all_body: 'Retry every video in an error state?<br><span style="color:var(--fg-dim)">Private or removed videos are automatically excluded.</span>',
@@ -475,6 +477,7 @@ ko: {
   redownload_all_title: '전체 재다운로드',
   redownload_all_body: '완료된 그룹 {n}개를 모두 처음부터 다시 다운로드합니까?',
   recheck_all_title: '🔄 전체 재확인',
+  recheck_sched_title: '⏱ 주기적 전체 재확인',
   recheck_all_body: '완료된 그룹 {n}개에서 새로 올라온 영상이 있는지 다시 확인합니까?',
   retry_all_title: '↺ 오류 재시도',
   retry_all_body: '오류 상태의 영상을 모두 다시 시도합니까?<br><span style="color:var(--fg-dim)">비공개/삭제된 영상은 자동 제외됩니다.</span>',
@@ -693,6 +696,7 @@ function applyStaticText() {
   $('opt-sort-name').textContent = t('sort_name');
   $('asc-btn').textContent = ASC_DONE ? t('asc_asc') : t('asc_desc');
   $('btn-recheck-all').textContent = t('done_recheck_all');
+  $('btn-recheck-sched').title = t('recheck_sched_title');
   $('btn-retry-all').textContent = t('done_retry_all');
   $('btn-redownload-all').textContent = t('done_redownload_all');
   $('btn-res-check-all').textContent = t('done_res_check');
@@ -1052,6 +1056,19 @@ function confirmRedownloadAll() {
 }
 function confirmRecheckAll() {
   confirmModal(t('recheck_all_title'), t('recheck_all_body', { n: SNAP.done.length }), () => doneOp('recheck_all'));
+}
+// The schedule lives in Settings; this is the same value, reachable from the button it belongs to.
+async function openRecheckSchedule() {
+  const s = await (await fetch('/api/settings')).json();
+  showModal(`<h3>${esc(t('recheck_sched_title'))}</h3>
+    <div class="frow"><label>${esc(t('s_recheck_days'))}</label><input type="number" id="rs-days" min="0" max="365" value="${s.recheck_interval_days}"></div>
+    <div class="btns"><button onclick="hideModal()">${esc(t('settings_cancel'))}</button>
+    <button class="primary" id="rs-save">${esc(t('settings_save'))}</button></div>`);
+  $('rs-save').onclick = async () => {
+    s.recheck_interval_days = Math.max(0, +$('rs-days').value || 0);
+    await api('/api/settings', s);
+    hideModal(); toast(t('settings_saved_toast'));
+  };
 }
 function confirmRetryAll() { api('/api/retry_scan', {}); }
 function retrySelected() {
